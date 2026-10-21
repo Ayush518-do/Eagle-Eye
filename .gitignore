@@ -1,0 +1,42 @@
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ML artifacts and experiment tracking
+runs/
+wandb/
+ml/weights/
+*.pt
+*.onnx
+*.engine
+
+# Datasets, uploads, databases, and generated outputs
+# Keep data/sample/.gitkeep and data README files trackable.
+data/raw/
+data/processed/
+data/external/
+backend/uploads/
+outputs/
+*.db
+*.sqlite3
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
