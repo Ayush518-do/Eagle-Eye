@@ -295,7 +295,26 @@ def find_layout_page(words: list[Word]) -> int | None:
 
 
 # ------------------------------------------------------------------ contract A
+_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "private" / ".parse_cache"
+
+
 def to_contract(pdf_path: Path) -> dict:
+    """Parse once per PDF; later calls for the same file (same SHA-256) return the saved result."""
+    pdf_path = Path(pdf_path)
+    sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    cached = _CACHE_DIR / f"{sha}-{PARSER_VERSION.replace(' ', '_')}.json"
+    if cached.exists():
+        return json.loads(cached.read_text(encoding="utf-8"))
+    result = _to_contract_uncached(pdf_path)
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps(result), encoding="utf-8")
+    except OSError:
+        pass
+    return result
+
+
+def _to_contract_uncached(pdf_path: Path) -> dict:
     pdf_path = Path(pdf_path)
     words = extract_words(pdf_path)
     ratings = read_ratings(words)
