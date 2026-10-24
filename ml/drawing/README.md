@@ -1,6 +1,6 @@
 # Part 2 — Drawing parser and tag reading
 
-Task list: [`../../docs/team/part2-ml-ocr-drawing.md`](../../docs/team/part2-ml-ocr-drawing.md).
+Task list: [`../../docs/team/ml-ocr-drawing.md`](../../docs/team/ml-ocr-drawing.md).
 Outputs: contract A (drawing) and contract B (`kind: "tag_label"`) in [`../../docs/contracts.md`](../../docs/contracts.md).
 
 ```text

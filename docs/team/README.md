@@ -1,27 +1,44 @@
 # Team work split
 
-Eagle Eye is divided into four parts. Each part has one owner, one branch and one task list.
+Work runs in two phases. **Phase 1 (now)** has three tasks that don't need ML.
+**Phase 2** adds the two ML tasks once the ML documents arrive.
 
-| Part | Owner | Branch | Task list |
+## Phase 1: start now
+
+| Task | Owner | Branch | Instructions | Owns these folders |
+|---|---|---|---|---|
+| 1. Backend: API and database | _TBD_ | `feature/backend-pipeline` | [backend.md](backend.md) | `backend/app/` (not `pipeline/`), `backend/alembic/` |
+| 2. Frontend: screens | _TBD_ | `feature/frontend-ui` | [frontend.md](frontend.md) | `frontend/`, `tests/e2e/` |
+| 3. Inspection engine: rules, photo quality, reports | _TBD_ | `feature/inspection-engine` | [inspection-engine.md](inspection-engine.md) | `backend/app/pipeline/`, `backend/app/reports/`, `config/` |
+
+Each task owns different folders, so two people rarely edit the same file. Shared files
+(`backend/requirements.txt`, `docs/contracts.md`) need a quick message to the others before you change them.
+
+Until ML exists, photos get **manual boxes**: a person draws a box on the photo and types the tag
+(`"source": "manual"`). Backend, frontend and engine can all be finished and tested this way.
+
+## Phase 2: ML (after the documents arrive)
+
+| Task | Owner | Branch | Instructions |
 |---|---|---|---|
-| 1. Vision / component detection (ML) | _TBD_ | `feature/ml-detection` | [part1-ml-detection.md](part1-ml-detection.md) |
-| 2. Drawing parser and OCR (ML) | _TBD_ | `feature/ml-ocr-drawing` | [part2-ml-ocr-drawing.md](part2-ml-ocr-drawing.md) |
-| 3. Backend: API, database, comparison, pipeline | _TBD_ | `feature/backend-pipeline` | [part3-backend.md](part3-backend.md) |
-| 4. Frontend: upload, results, review, history | _TBD_ | `feature/frontend-ui` | [part4-frontend.md](part4-frontend.md) |
+| 4. Component detection | _TBD_ | `feature/ml-detection` | [ml-detection.md](ml-detection.md) |
+| 5. Drawing parser and tag reading (OCR) | _TBD_ | `feature/ml-ocr-drawing` | [ml-ocr-drawing.md](ml-ocr-drawing.md) |
 
-Team: Ayush, Pranay, Aditya, Archita. Fill in the Owner column once parts are assigned.
+Team: Ayush, Pranay, Aditya, Archita. Fill in the Owner columns once tasks are assigned.
 
 First-time setup: [`../setup.md`](../setup.md).
 
 ## How the parts connect
 
 ```text
- Part 2: drawing PDF ──► expected items (tags, part numbers, ratings)
-                                   │
- Part 1: photo ──► component boxes │
- Part 2: photo ──► tag text read   │
-                     │             ▼
-                     └──► Part 3: comparison + database + API ──► Part 4: screens
+ drawing PDF ──(Task 5, or typed by hand)──► expected items ─────────┐
+                                                                     ▼
+ photos ──(Tasks 4+5, or manual boxes)──► observations ──► Task 3 engine ──► findings
+                                                                     │
+                     Task 1: API + database stores everything ◄──────┘
+                                       │
+                                       ▼
+                              Task 2: screens
 ```
 
 The two hand-over formats are fixed in [`../contracts.md`](../contracts.md). Parts can work at the same
@@ -54,11 +71,11 @@ git push origin feature/<your-part>
    `"source": "synthetic"` and must never appear in a demo result or a metric.
 5. Report only numbers produced by a script, and say what data they were measured on.
 
-## Status at the time of the split
+## Current status
 
-- The repository is still the starter scaffold (`/health` endpoint and a static upload page).
-- Earlier prototype work (drawing parser, OCR wrappers, comparison engine, database, React workflow)
-  was never committed and is not in this repository. Each task list says what has to be rebuilt.
+- `develop` contains tested starters for every task: backend API basics (13 tests), frontend screens
+  (builds), comparison starter, and ML tools (14 tests). Details are in each task file.
+- There's no database and no inspection endpoints yet; Task 1 starts there.
 - Known results from that prototype, for reference only (one reviewer, development photos, not an
   independent test): RapidOCR read 12/12 hand-marked tags exactly, Tesseract 5/12; the drawing parser
   read all 70 BOM lines; power-supply ratings PS11–PS23 could not be read reliably.

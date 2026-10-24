@@ -1,6 +1,6 @@
 # Part 1 — Component detection
 
-Task list: [`../../docs/team/part1-ml-detection.md`](../../docs/team/part1-ml-detection.md).
+Task list: [`../../docs/team/ml-detection.md`](../../docs/team/ml-detection.md).
 Output format: contract B in [`../../docs/contracts.md`](../../docs/contracts.md).
 
 ```text

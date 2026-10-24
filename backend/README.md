@@ -1,6 +1,6 @@
 # Backend (Part 3)
 
-FastAPI service. Task list: [`../docs/team/part3-backend.md`](../docs/team/part3-backend.md).
+FastAPI service. Task list: [`../docs/team/backend.md`](../docs/team/backend.md).
 
 ```text
 backend/

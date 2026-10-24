@@ -1,6 +1,6 @@
 # Frontend (Part 4)
 
-React + Vite + JSX + plain CSS. Task list: [`../docs/team/part4-frontend.md`](../docs/team/part4-frontend.md).
+React + Vite + JSX + plain CSS. Task list: [`../docs/team/frontend.md`](../docs/team/frontend.md).
 
 ```text
 frontend/src/
