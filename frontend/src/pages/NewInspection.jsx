@@ -49,6 +49,7 @@ export default function NewInspection() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [statusFeedback, setStatusFeedback] = useState('');
+  const [parsedItems, setParsedItems] = useState([]);
   const [isDragActive, setIsDragActive] = useState(false);
 
   // Load existing cabinets on mount
@@ -164,6 +165,7 @@ export default function NewInspection() {
       try {
         const parsed = await parseDrawingForRevision(revisionRes.design_revision_id);
         const count = parsed?.items?.length || 0;
+        setParsedItems(parsed?.items || []);
         setStatusFeedback(`Extracted ${count} expected items from the drawing.`);
       } catch (parseErr) {
         console.warn('Drawing parse failed; continuing without expected items:', parseErr.message);
@@ -288,6 +290,46 @@ export default function NewInspection() {
         <div className="notice" style={{ backgroundColor: 'var(--color-surface-subtle)', borderColor: 'var(--color-navy)' }}>
           <Info size={18} className="notice-icon" color="var(--color-navy)" />
           <div style={{ color: 'var(--color-navy)', fontWeight: 600 }}>{statusFeedback}</div>
+        </div>
+      )}
+
+      {/* Extracted from the drawing */}
+      {parsedItems.length > 0 && (
+        <div className="panel" style={{ marginBottom: '20px' }}>
+          <h2 className="panel-title" style={{ marginBottom: '6px' }}>
+            Extracted from the drawing: {parsedItems.length} components
+          </h2>
+          <p className="page-desc" style={{ marginBottom: '14px' }}>
+            Tags, ratings, part numbers and layout read directly from the PDF. * = rating inferred from BOM count, needs review.
+          </p>
+          <div style={{ maxHeight: '420px', overflow: 'auto', border: '1px solid #e1e6ee', borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f1f4f8', position: 'sticky', top: 0 }}>
+                  {['Tag', 'Type', 'Rating', 'Part number', 'Description', 'Page', 'Location in cabinet'].map((h) => (
+                    <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: '#45526a' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {parsedItems.map((it) => (
+                  <tr key={it.tag} style={{ borderTop: '1px solid #edf0f4' }}>
+                    <td style={{ padding: '7px 10px', fontWeight: 700 }}>{it.tag}</td>
+                    <td style={{ padding: '7px 10px' }}>{it.component_type || ({CB:'Circuit breaker',PS:'Power supply',DS:'Disconnector',D:'Diode module',RCCB:'RCCB'})[(it.tag.match(/^[A-Z]+/)||[''])[0]] || '–'}</td>
+                    <td style={{ padding: '7px 10px' }}>
+                      {it.rating?.value || '–'}{it.rating?.value && it.rating?.needs_review ? ' *' : ''}
+                    </td>
+                    <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{it.part_number || '–'}</td>
+                    <td style={{ padding: '7px 10px' }}>{(it.description || '–').slice(0, 60)}</td>
+                    <td style={{ padding: '7px 10px' }}>{it.source_page ?? '–'}</td>
+                    <td style={{ padding: '7px 10px' }}>
+                      {it.layout?.view ? it.layout.view.replace(/_/g, ' ') : '–'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
