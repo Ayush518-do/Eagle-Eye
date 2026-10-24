@@ -40,3 +40,50 @@ h3 { margin: 20px 0 7px; font-size: 18px; }
 .prototype-note { margin: 10px 0 0; color: #82988a; font-size: 12px; text-align: center; }
 footer { display: flex; justify-content: space-between; gap: 14px; padding: 30px 0; margin-top: 42px; border-top: 1px solid #263b33; color: #72887b; font-size: 10px; letter-spacing: .08em; }
 @media (max-width: 640px) { .shell { width: min(100% - 28px, 1080px); } .hero { padding: 52px 0 42px; } .upload-grid { grid-template-columns: 1fr; } .workflow-heading { align-items: start; flex-direction: column; } footer { flex-direction: column; } }
+
+/* ---- Added for multi-screen UI ---- */
+.nav { display: flex; gap: 18px; font-size: 13px; }
+.nav a { color: #b9cbbf; text-decoration: none; }
+.nav a.active { color: #d5f36d; }
+.panel { margin-top: 22px; padding: 22px; border: 1px solid #30493d; border-radius: 16px; background: rgba(19, 37, 30, .83); }
+.panel h2 { margin-bottom: 12px; }
+.muted { color: #82988a; font-size: 13px; }
+.ok { color: #9fe0a8; }
+.error { color: #ff9b8f; }
+.status-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+.dot-ok { background: #7ddc8a; } .dot-off { background: #6b7a70; }
+.primary-button:not(:disabled) { background: #d5f36d; color: #142219; cursor: pointer; }
+.upload-results { list-style: none; padding: 0; font-size: 13px; }
+.synthetic-banner { margin-top: 18px; padding: 12px 16px; border-radius: 10px; background: #5b2a8a; color: #fff; font-weight: 800; letter-spacing: .04em; text-align: center; }
+.results-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+figure { margin: 0 0 14px; }
+.image-frame { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #0e1b17; border: 1px solid #30493d; }
+.image-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.image-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #5d7366; font-size: 13px; }
+.box { position: absolute; padding: 0; border: 2px solid; border-radius: 3px; background: transparent; cursor: pointer; }
+.box span { position: absolute; top: -18px; left: -2px; padding: 0 4px; font-size: 10px; font-weight: 800; color: #10241f; background: currentColor; }
+.box span { color: #10241f; }
+.box.selected { outline: 3px solid #fff; }
+/* Status colours: each state is distinct, and the label text always says the state too. */
+.status-verified { border-color: #7ddc8a; color: #7ddc8a; }
+.status-potential_mismatch { border-color: #ff6b5b; color: #ff6b5b; }
+.status-needs_review { border-color: #f2c94c; color: #f2c94c; border-style: dashed; }
+.status-inconclusive { border-color: #9aa8a0; color: #9aa8a0; border-style: dotted; }
+.status-confirmed_by_reviewer { border-color: #ff6b5b; color: #ff6b5b; }
+.status-rejected_by_reviewer, .status-resolved_after_reinspection { border-color: #7ddc8a; color: #7ddc8a; }
+.box.status-verified span { background: #7ddc8a; } .box.status-potential_mismatch span { background: #ff6b5b; }
+.box.status-needs_review span { background: #f2c94c; } .box.status-inconclusive span { background: #9aa8a0; }
+.findings { width: 100%; border-collapse: collapse; font-size: 13px; }
+.findings th, .findings td { padding: 8px 6px; border-bottom: 1px solid #263b33; text-align: left; }
+.findings tr { cursor: pointer; } .findings tr.selected { background: #1d3229; }
+.badge { padding: 2px 8px; border: 1px solid; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.filter select, .review-form input, .review-form button { padding: 8px 10px; border-radius: 8px; border: 1px solid #546d59; background: #13251e; color: #e9f4e9; }
+.review-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-form button { cursor: pointer; }
+.review-form button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .upload-grid, .results-grid { grid-template-columns: 1fr; }
+  .shell { width: calc(100% - 32px); }
+  footer { flex-direction: column; }
+}
