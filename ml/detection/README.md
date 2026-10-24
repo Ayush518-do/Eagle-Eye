@@ -37,6 +37,10 @@ Company photos are split in `splits.yaml`:
 | 7 | Final test on the test photos | 10 min | `test_metrics.json` |
 | 8 | Plug into the app | 2 min | `.env` settings |
 
+**Shortcut:** `ml/detection/run.ps1` runs each stage with one command, e.g. `.\ml\detection\run.ps1 setup`,
+then `prelabel-dev`, `prelabel-all`, `labelstudio`, `dataset`, `train`, `dev`, `test` (list at the top of the file).
+The sections below explain what each stage does.
+
 Run all commands in **PowerShell in the repo folder** (`vit\Eagle-Eye`), on branch `feature/ml-detection`.
 Company files are in `data/private/company-dataset/`. `data/private/`, `data/external/` and `runs/` are
 ignored by Git. **Never commit them.**
