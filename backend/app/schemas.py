@@ -64,6 +64,7 @@ class Observation(BaseModel):
     bbox: BBox
     confidence: Optional[float] = Field(default=None, ge=0, le=1)
     text: Optional[str] = None
+    raw_text: Optional[str] = None
     text_confidence: Optional[float] = Field(default=None, ge=0, le=1)
     model: Optional[ModelInfo] = None
 
