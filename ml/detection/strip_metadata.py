@@ -19,7 +19,7 @@ def strip(src: Path, dst_dir: Path, png: bool = False) -> Path:
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)  # keep the photo the right way up before dropping EXIF
         clean = Image.new(im.mode, im.size)
-        clean.putdata(list(im.getdata()))
+        clean.paste(im)
         out = dst_dir / (src.stem + (".png" if png else src.suffix.lower()))
         if out.exists():
             raise FileExistsError(f"Refusing to overwrite {out}")

@@ -1,0 +1,6 @@
+# Training machine (RTX 4050). Install PyTorch with CUDA FIRST, see ml/detection/README.md step 0.
+rfdetr[train]==1.11.2          # Apache-2.0 (Nano/Small/Medium weights Apache-2.0)
+transformers>=5.1,<6           # OWLv2 for pre-labels, Apache-2.0
+pillow>=10,<13
+pyyaml>=6,<7
+pytest>=8,<9
