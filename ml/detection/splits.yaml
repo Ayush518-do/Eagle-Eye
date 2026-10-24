@@ -1,0 +1,17 @@
+# Which company photo goes into which split. Split by CABINET, never by tile:
+# tiles of one photo must never appear in two splits, or the test score is meaningless.
+#
+# Cabinet 2 (3 columns, no drawing) is the only photo of a cabinet the model never sees in training,
+# so it is the test set. It only contains io_module parts, which means:
+#   -> io_module gets an honest test score;
+#   -> power_supply and mcb have NO clean test on company data. Say so when reporting results.
+# valid is used only to pick the best training round (early stopping). It is another photo of
+# cabinet 1, so its scores are optimistic. Never report them as accuracy.
+train:
+  - cab1_full_front
+  - cab1_power_supplies_closeup
+  - cab1_breakers_CB11-CB16_closeup
+valid:
+  - cab1_lower_front_io
+test:
+  - cab2_full_front_3_columns

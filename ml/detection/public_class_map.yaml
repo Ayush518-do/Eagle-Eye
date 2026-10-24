@@ -1,0 +1,32 @@
+# Public datasets to merge into TRAIN and VALID only (never test).
+# Download each from Roboflow Universe as "COCO" format and unzip into data/external/<folder name>/
+# (folder name = the key below). Each must contain train/ and valid/ with _annotations.coco.json.
+#
+# Map: <their class name>: <our class name>, or null to ignore that class.
+# Only images containing at least one mapped class are used.
+#
+# Licences: both CC BY 4.0 -> credit them in ml/detection/README.md ("Credits") if used.
+#   audit-panel:              https://universe.roboflow.com/parking-detection-nfmxg/audit-panel
+#   circuitbreakerdetection:  https://universe.roboflow.com/mahmoud-wali/circuitbreakerdetection
+# Check a few images of each by eye before training: if their "circuit breaker" boxes look different
+# from our DIN-rail breakers (e.g. whole panels), set them to null.
+
+audit-panel:
+  circuit breaker: mcb
+  panel: null
+  ampere rating: null
+  breaker label number: null
+  switch-on: null
+  switch-off: null
+  black connected wire L1: null
+  red connected wire L2: null
+  blue connected wire L3: null
+  wire holder L1: null
+  wire holder L2: null
+  wire holder L3: null
+
+circuitbreakerdetection:
+  1 Pole Circuit Breaker: mcb
+  2 Pole Circuit Breaker: mcb
+  3 Pole Circuit Breaker: mcb
+  4 pole circuit breaker: mcb

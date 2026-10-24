@@ -1,5 +1,7 @@
 # Part 1 — Vision / component detection (ML)
 
+**Training steps: follow [`ml/detection/README.md`](../../ml/detection/README.md).** This file is the overview.
+
 Branch: `feature/ml-detection` · Folder: `ml/detection/` · Produces: contract B (`kind: "component"`)
 
 **Goal:** find where the parts are in a cabinet photo (draw a box around each breaker, power supply,
