@@ -1,13 +1,29 @@
 """Single entry point for a cabinet inspection."""
+from collections.abc import Mapping
+import math
 from typing import Any
+
+from pydantic import BaseModel, ValidationError
+from PIL import Image, UnidentifiedImageError
 
 from backend.app.pipeline.compare import compare
 from backend.app.pipeline.image_quality import check_photo
+from backend.app.pipeline.reinspection import compare_with_previous
 from backend.app.pipeline.thresholds import load_thresholds
-from backend.app.schemas import Finding
+from backend.app.schemas import (
+    CONTRACT_VERSION,
+    DrawingParseResult,
+    Finding,
+    ImageObservations,
+)
 
 
 Thresholds = dict[str, Any] | None
+
+# The available detector producer emits contract B as 0.3. Its observation
+# fields remain compatible with the engine's v0.2 schema; unknown additions
+# are still rejected below.
+SUPPORTED_IMAGE_CONTRACT_VERSIONS = frozenset({CONTRACT_VERSION, "0.3"})
 
 
 def apply_confidence_gate(
@@ -138,3 +154,175 @@ def run_inspection(
         findings, expected_items, observations_by_image
     )
     return findings, image_flags
+
+
+def _reject_unknown_contract_fields(payload: Any, model: type[BaseModel], context: str) -> None:
+    """Reject producer fields Pydantic would otherwise silently ignore."""
+    if not isinstance(payload, Mapping):
+        return
+    unknown = set(payload) - set(model.model_fields)
+    if unknown:
+        names = ", ".join(sorted(str(name) for name in unknown))
+        raise ValueError(f"{context} contains unsupported field(s): {names}")
+    for name, field in model.model_fields.items():
+        if name not in payload:
+            continue
+        annotation = field.annotation
+        nested_models = _nested_model_types(annotation)
+        if not nested_models:
+            continue
+        value = payload[name]
+        if isinstance(value, list):
+            for index, entry in enumerate(value):
+                for nested_model in nested_models:
+                    if isinstance(entry, Mapping):
+                        _reject_unknown_contract_fields(
+                            entry, nested_model, f"{context}.{name}[{index}]"
+                        )
+        elif isinstance(value, Mapping):
+            _reject_unknown_contract_fields(
+                value, nested_models[0], f"{context}.{name}"
+            )
+
+
+def _nested_model_types(annotation: Any) -> list[type[BaseModel]]:
+    """Find model types inside Optional/list annotations for strict input checks."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return [annotation]
+    found: list[type[BaseModel]] = []
+    for argument in getattr(annotation, "__args__", ()):
+        found.extend(_nested_model_types(argument))
+    return found
+
+
+def _validate_producer_contract(
+    payload: Any,
+    model: type[BaseModel],
+    context: str,
+    supported_versions: frozenset[str] | None = None,
+):
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"{context} must be a mapping")
+    versions = supported_versions or frozenset({CONTRACT_VERSION})
+    if payload.get("contract_version") not in versions:
+        expected = ", ".join(repr(version) for version in sorted(versions))
+        raise ValueError(
+            f"{context}.contract_version must be one of: {expected}"
+        )
+    _reject_unknown_contract_fields(payload, model, context)
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"Invalid {context} contract: {exc}") from exc
+
+
+def _validate_declared_image_size(payload: Mapping[str, Any], image_id: str, path) -> None:
+    """Ensure contract B dimensions describe the original image on disk."""
+    raw_size = payload.get("image_size")
+    if (
+        not isinstance(raw_size, (list, tuple))
+        or len(raw_size) != 2
+        or any(type(value) is not int or value <= 0 for value in raw_size)
+    ):
+        raise ValueError(
+            f"Image contract for {image_id!r} image_size must contain two positive integers"
+        )
+    try:
+        with Image.open(path) as image:
+            image.load()
+            actual_size = (image.width, image.height)
+    except (FileNotFoundError, IsADirectoryError, UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError(f"Unable to read image path for contract image {image_id!r}") from exc
+    if tuple(raw_size) != actual_size:
+        raise ValueError(
+            f"Image contract for {image_id!r} declares size {tuple(raw_size)!r}, "
+            f"but the original image is {actual_size!r}"
+        )
+
+
+def run_inspection_from_contracts(
+    drawing_contract,
+    image_contracts_by_id,
+    image_paths,
+    thresholds=None,
+):
+    """Validate producer contract dictionaries and adapt them for the engine.
+
+    ``image_paths`` may contain additional uploaded images with no observations;
+    their photo-quality flags are still assessed by :func:`run_inspection`.
+    """
+    drawing = _validate_producer_contract(
+        drawing_contract, DrawingParseResult, "drawing contract"
+    )
+    if not drawing.parser_version.strip():
+        raise ValueError("drawing contract parser_version must be non-empty")
+    if any(not item.tag.strip() for item in drawing.items):
+        raise ValueError("drawing contract expected item tags must be non-empty")
+    if not isinstance(image_paths, Mapping):
+        raise TypeError("image_paths must map image IDs to local image paths")
+    if not isinstance(image_contracts_by_id, Mapping):
+        raise TypeError("image_contracts_by_id must map image IDs to contract B mappings")
+
+    observations_by_image = {}
+    for image_id, payload in image_contracts_by_id.items():
+        context = f"image contract for {image_id!r}"
+        image = _validate_producer_contract(
+            payload,
+            ImageObservations,
+            context,
+            SUPPORTED_IMAGE_CONTRACT_VERSIONS,
+        )
+        if not isinstance(image_id, str) or not image_id.strip():
+            raise ValueError("image contract mapping keys must be non-empty image IDs")
+        if image.image_id != image_id:
+            raise ValueError(
+                f"{context} declares image_id {image.image_id!r}, which does not match its mapping key"
+            )
+        if image_id not in image_paths:
+            raise ValueError(f"{context} has no corresponding entry in image_paths")
+        _validate_declared_image_size(payload, image_id, image_paths[image_id])
+        width, height = image.image_size
+        observation_ids = [observation.observation_id for observation in image.observations]
+        if len(observation_ids) != len(set(observation_ids)):
+            raise ValueError(f"{context} observation IDs must be unique within the image")
+        for observation in image.observations:
+            if not observation.observation_id.strip():
+                raise ValueError(f"{context} observation IDs must be non-empty")
+            if any(not math.isfinite(value) for value in observation.bbox):
+                raise ValueError(f"{context} observation {observation.observation_id!r} has non-finite bbox coordinates")
+            x_min, y_min, x_max, y_max = observation.bbox
+            if x_min < 0 or y_min < 0 or x_max > width or y_max > height:
+                raise ValueError(
+                    f"{context} observation {observation.observation_id!r} bbox falls outside image_size"
+                )
+        observations_by_image[image_id] = image.observations
+
+    return run_inspection(
+        drawing.items, observations_by_image, image_paths, thresholds
+    )
+
+
+def run_reinspection(
+    previous_findings,
+    expected_items,
+    observations_by_image,
+    image_paths,
+    thresholds=None,
+):
+    """Run a new inspection and preserve/resolve findings from its predecessor.
+
+    This pipeline-level entry point leaves ``run_inspection`` unchanged. The API
+    layer can supply the prior inspection's findings and store the returned
+    combined findings on the new inspection.
+    """
+    new_findings, image_flags = run_inspection(
+        expected_items,
+        observations_by_image,
+        image_paths,
+        thresholds,
+    )
+    return compare_with_previous(
+        previous_findings,
+        new_findings,
+        assessed_image_ids=set(image_flags),
+    ), image_flags

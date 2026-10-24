@@ -7,9 +7,9 @@ If you change a model here, update docs/contracts.md in the same pull request.
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-CONTRACT_VERSION = "0.1"
+CONTRACT_VERSION = "0.2"
 
 BBox = list[float]  # [x_min, y_min, x_max, y_max] in original-image pixels
 
@@ -59,7 +59,7 @@ class ModelInfo(BaseModel):
 class Observation(BaseModel):
     observation_id: str
     source: Literal["detector", "ocr", "manual", "synthetic"]
-    kind: Literal["component", "tag_label"]
+    kind: Literal["component", "tag_label", "rating"]
     class_name: str
     bbox: BBox
     confidence: Optional[float] = Field(default=None, ge=0, le=1)
@@ -69,6 +69,19 @@ class Observation(BaseModel):
     model: Optional[ModelInfo] = None
 
     _bbox = field_validator("bbox")(_check_bbox)
+
+    @model_validator(mode="after")
+    def _validate_rating_observation(self):
+        if self.kind == "rating":
+            if self.source != "ocr":
+                raise ValueError("rating observations must have source='ocr'")
+            if self.class_name != "rating":
+                raise ValueError("rating observations must have class_name='rating'")
+            if self.text is not None:
+                raise ValueError("rating observations must leave text unset")
+            if self.raw_text is None or not self.raw_text.strip():
+                raise ValueError("rating observations require non-empty raw_text")
+        return self
 
 
 class ImageObservations(BaseModel):

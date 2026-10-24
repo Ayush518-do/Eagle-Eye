@@ -3,7 +3,7 @@
 These formats let the four parts work in parallel. Change them only with agreement from both sides,
 and bump `contract_version` when you do.
 
-`contract_version: 0.1`
+`contract_version: 0.2`
 
 Coordinates are always pixels in the **original uploaded image**, as `[x_min, y_min, x_max, y_max]`,
 origin at the top-left. Confidences are numbers from 0 to 1, or `null` when the step gives none.
@@ -16,7 +16,7 @@ The drawing parser turns the drawing PDF into a list of **expected items**: what
 
 ```json
 {
-  "contract_version": "0.1",
+  "contract_version": "0.2",
   "drawing_file_sha256": "…",
   "parser_version": "drawing-parser 0.1.0",
   "items": [
@@ -49,7 +49,7 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
 
 ```json
 {
-  "contract_version": "0.1",
+  "contract_version": "0.2",
   "image_id": "IMG-001",
   "image_sha256": "…",
   "image_size": [4096, 3072],
@@ -76,13 +76,28 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
       "raw_text": "C811",
       "text_confidence": 0.97,
       "model": { "name": "rapidocr", "version": "…", "weights_sha256": null }
+    },
+    {
+      "observation_id": "OBS-003",
+      "source": "ocr",
+      "kind": "rating",
+      "class_name": "rating",
+      "bbox": [1210, 830, 1280, 862],
+      "confidence": null,
+      "text": null,
+      "raw_text": "16 A",
+      "text_confidence": 0.94,
+      "model": { "name": "rapidocr", "version": "…", "weights_sha256": null }
     }
   ]
 }
 ```
 
 - `source` is one of `detector`, `ocr`, `manual` (drawn by a person) or `synthetic` (test data only).
-- `raw_text` is exactly what OCR read; `text` is the tag it was matched to. Keep both so corrections are visible.
+- For `kind: "tag_label"`, `raw_text` is exactly what OCR read and `text` is the tag it was matched to.
+  For `kind: "rating"`, `raw_text` is the exact OCR rating text and `text` is null. Rating
+  observations are explicitly distinguished from tag-label observations; arbitrary tag OCR is not a rating.
+- Rating observations use `source: "ocr"`, `class_name: "rating"`, and the OCR text's `bbox`.
 - `confidence` is how sure the step is that something is there; `text_confidence` is how sure the
   reader is of the characters. Keep them separate.
 - An empty `observations` list is a valid answer. It means "nothing found", not "missing".
@@ -93,7 +108,11 @@ Both A and B are produced through a Python function so the backend does not depe
 # ml/interfaces.py (Part 1 and Part 2 implement; Part 3 calls)
 def parse_drawing(pdf_path: str) -> dict: ...          # returns contract A
 def detect_components(image_path: str) -> dict: ...    # returns contract B, kind="component"
-def read_tags(image_path: str) -> dict: ...            # returns contract B, kind="tag_label"
+def read_tags(
+    image_path: str,
+    expected_tags: list[str] | None = None,
+    image_id: str | None = None,
+) -> dict: ...  # contract B tag_label/rating observations; expected tags enable matching
 ```
 
 If a model is not available the function raises `ModelUnavailableError` with a plain message. It never

@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 from PIL import Image
 
+from backend.app.pipeline.rating_format import normalise_rating
 from ml.interfaces import ModelUnavailableError
 from ml.ocr.tag_matcher import match_tag
 
@@ -41,20 +42,33 @@ def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_i
     for i, (points, text, score) in enumerate(result or [], start=1):
         xs = [p[0] for p in points]; ys = [p[1] for p in points]
         matched = match_tag(text, expected) if expected else None
+        rating = normalise_rating(text)
+        if matched and matched.tag:
+            kind = "tag_label"
+            class_name = "tag_label"
+            normalized_text = matched.tag
+        elif rating is not None:
+            kind = "rating"
+            class_name = "rating"
+            normalized_text = None
+        else:
+            kind = "tag_label"
+            class_name = "tag_label"
+            normalized_text = text
         observations.append({
             "observation_id": f"OCR-{i:03d}",
             "source": "ocr",
-            "kind": "tag_label",
-            "class_name": "tag_label",
+            "kind": kind,
+            "class_name": class_name,
             "bbox": [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))],
             "confidence": None,
-            "text": (matched.tag if matched and matched.tag else text),
+            "text": normalized_text,
             "raw_text": text,
-            "text_confidence": float(score),
+            "text_confidence": None if score is None else float(score),
             "model": {"name": "rapidocr-onnxruntime", "version": None, "weights_sha256": None},
         })
     return {
-        "contract_version": "0.1",
+        "contract_version": "0.2",
         "image_id": image_id or path.stem,
         "image_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "image_size": list(size),

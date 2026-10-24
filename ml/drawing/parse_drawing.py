@@ -82,7 +82,7 @@ def to_contract(pdf_path: Path) -> dict:
             "source_page": first.page,
         })
     return {
-        "contract_version": "0.1",
+        "contract_version": "0.2",
         "drawing_file_sha256": hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
         "parser_version": PARSER_VERSION,
         "items": items,

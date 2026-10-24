@@ -41,6 +41,7 @@ def test_contract_from_generated_pdf(tmp_path):
     c.drawString(100, 700, "CB11 MCB 10A"); c.drawString(100, 680, "PS11 Power supply")
     c.showPage(); c.drawString(100, 700, "CB11"); c.save()
     out = to_contract(pdf)
+    assert out["contract_version"] == "0.2"
     tags = {i["tag"]: i for i in out["items"]}
     assert set(tags) == {"CB11", "PS11"}
     assert tags["CB11"]["source_page"] == 1
