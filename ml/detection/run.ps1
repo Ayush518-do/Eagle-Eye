@@ -22,7 +22,7 @@ $Photos = "data/private/company-dataset"
 $Data = "data/private/rfdetr_dataset"      # company test/dev answer key (+ public, unused here)
 $Public = "data/private/public_dataset"   # public training data only
 $Run = "runs/rfdetr-mcb-v1"
-$Weights = "$Run/checkpoint_best_total.pth"
+$Weights = "$Run/checkpoint_best_ema.pth"
 
 function Use-Ml {
     if (-not (Test-Path ".venv-ml")) { throw "Run '.\ml\detection\run.ps1 setup' first." }

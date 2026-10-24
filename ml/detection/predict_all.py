@@ -1,7 +1,7 @@
 """Step 6: run every available model on the company photos and save their boxes per source.
 
     python -m ml.detection.predict_all data/private/rfdetr_dataset/test_full \
-        --weights runs/rfdetr-mcb-v1/checkpoint_best_total.pth --zero-shot --out runs/eval/test
+        --weights runs/rfdetr-mcb-v1/checkpoint_best_ema.pth --zero-shot --out runs/eval/test
 
 Writes  <out>/detector/<photo>.json     RF-DETR boxes (contract B, source "detector")
         <out>/zero_shot/<photo>.json    OWLv2 boxes   (contract B, source "zero_shot")

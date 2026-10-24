@@ -64,7 +64,7 @@ def main() -> None:
     }
     (a.out / "train_record.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
     print(json.dumps(record, indent=2))
-    print(f"\nBest weights: {a.out / 'checkpoint_best_total.pth'}")
+    print(f"\nBest weights: {a.out / 'checkpoint_best_ema.pth'}")
     print("Next: README steps 6-7 (predict_all + evaluate on the company test photos). Validation numbers are from public images, NOT our cabinets.")
 
 

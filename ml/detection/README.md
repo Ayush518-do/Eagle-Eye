@@ -32,7 +32,7 @@ Company photos are split in `splits.yaml`:
 | 2 | Label all 5 company photos (the answer key) | 1.5–2 h | Label Studio export |
 | 3 | Convert labels | 1 min | `company_coco.json` |
 | 4 | Download public data + build dataset | 30 min | `rfdetr_dataset/` |
-| 5 | Train the breaker detector | 30–60 min | `checkpoint_best_total.pth` |
+| 5 | Train the breaker detector | 30–60 min | `checkpoint_best_ema.pth` |
 | 6 | Choose thresholds on dev | 10 min | thresholds |
 | 7 | Final test on the test photos | 10 min | `test_metrics.json` |
 | 8 | Plug into the app | 2 min | `.env` settings |
@@ -165,7 +165,7 @@ A *threshold* is the minimum confidence a box needs to be kept. Run both models 
 then try thresholds:
 
 ```powershell
-python -m ml.detection.predict_all data/private/rfdetr_dataset/dev_full --weights runs/rfdetr-mcb-v1/checkpoint_best_total.pth --zero-shot --out runs/eval/dev
+python -m ml.detection.predict_all data/private/rfdetr_dataset/dev_full --weights runs/rfdetr-mcb-v1/checkpoint_best_ema.pth --zero-shot --out runs/eval/dev
 python -m ml.detection.evaluate --truth data/private/rfdetr_dataset/dev_full --pred-dir runs/eval/dev --out runs/eval/dev_metrics.json --threshold detector=0.3 --threshold zero_shot=0.15
 ```
 
@@ -175,8 +175,8 @@ precision/recall balance. **Write them down.**
 ## Step 7: Final test (once)
 
 ```powershell
-python -m ml.detection.predict_all data/private/rfdetr_dataset/test_full --weights runs/rfdetr-mcb-v1/checkpoint_best_total.pth --zero-shot --out runs/eval/test
-python -m ml.detection.evaluate --truth data/private/rfdetr_dataset/test_full --pred-dir runs/eval/test --out runs/eval/test_metrics.json --threshold detector=<your value> --threshold zero_shot=<your value> --register-weights runs/rfdetr-mcb-v1/checkpoint_best_total.pth
+python -m ml.detection.predict_all data/private/rfdetr_dataset/test_full --weights runs/rfdetr-mcb-v1/checkpoint_best_ema.pth --zero-shot --out runs/eval/test
+python -m ml.detection.evaluate --truth data/private/rfdetr_dataset/test_full --pred-dir runs/eval/test --out runs/eval/test_metrics.json --threshold detector=<your value> --threshold zero_shot=<your value> --register-weights runs/rfdetr-mcb-v1/checkpoint_best_ema.pth
 ```
 
 You get precision, recall and AP50 per class for `detector`, `zero_shot` and `combined`:
@@ -196,7 +196,7 @@ longer a fair test; say so when presenting.
 Add to `.env`:
 
 ```text
-DETECTOR_WEIGHTS_PATH=runs/rfdetr-mcb-v1/checkpoint_best_total.pth
+DETECTOR_WEIGHTS_PATH=runs/rfdetr-mcb-v1/checkpoint_best_ema.pth
 DETECTOR_MODEL_SIZE=small
 DETECTOR_THRESHOLD=<your detector value>
 ZERO_SHOT_ENABLED=true
