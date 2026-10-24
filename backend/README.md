@@ -1,18 +1,34 @@
-# Backend
+# Backend (Part 3)
 
-## Run locally
+FastAPI service. Task list: [`../docs/team/part3-backend.md`](../docs/team/part3-backend.md).
 
-From the repository root:
-
-```bash
-python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn app.main:app --app-dir backend --reload
+```text
+backend/
+├── app/
+│   ├── main.py              # app, CORS, /health
+│   ├── config.py            # settings from .env
+│   ├── schemas.py           # contracts A, B, C (docs/contracts.md)
+│   ├── api/routes.py        # /api/health, /api/model/status, POST /api/uploads
+│   ├── services/storage.py  # upload checks: real file type, size, safe names, SHA-256
+│   └── pipeline/compare.py  # starter tag-based comparison
+├── tests/                   # pytest
+├── requirements.txt
+└── requirements-dev.txt     # + pytest, httpx
 ```
 
-Health check: http://127.0.0.1:8000/health
-API docs: http://127.0.0.1:8000/docs
+Run from the repo root:
 
-The current API is a scaffold only. Inspection routes, storage, authentication, and AI inference still need implementation.
+```bash
+pip install -r backend/requirements-dev.txt
+uvicorn backend.app.main:app --reload      # http://127.0.0.1:8000/docs
+pytest -q
+```
+
+## What works now
+- `GET /health`, `GET /api/health`
+- `GET /api/model/status` — says which models are configured; does not load them
+- `POST /api/uploads` — JPEG/PNG/PDF only (checked from file bytes), size limit, generated file names
+- `compare()` — matches expected tags to OCR-read tags; unread tags are `inconclusive`, not missing
+
+## Next (see task list)
+Database and migrations, inspection endpoints, pipeline service, confidence gate, background runs.
