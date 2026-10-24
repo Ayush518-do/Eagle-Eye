@@ -11,7 +11,7 @@ from backend.app.services.expected_items import (
 PDF_SHA = "ab" * 32
 
 PARSED = {
-    "contract_version": "0.1", "drawing_file_sha256": PDF_SHA, "parser_version": "drawing-parser 0.1.0",
+    "contract_version": "0.2", "drawing_file_sha256": PDF_SHA, "parser_version": "drawing-parser 0.1.0",
     "items": [
         {"tag": "CB11", "part_number": "P1", "description": "MCB", "quantity": 1,
          "rating": {"value": "10 A", "source": "schematic", "page": 5, "needs_review": False}, "source_page": 3},
@@ -63,7 +63,7 @@ def test_parsed_result_model_is_unchanged_parser_version_is_still_required():
 def test_manual_submission_may_omit_parser_version_hash_and_contract_version():
     sub = ExpectedItemsSubmission.model_validate({"items": [{"tag": "CB11"}]})
     assert sub.parser_version is None and sub.drawing_file_sha256 is None
-    assert sub.contract_version == CONTRACT_VERSION == "0.1"
+    assert sub.contract_version == CONTRACT_VERSION == "0.2"
 
 
 # ---------- contract_version ----------
@@ -78,14 +78,14 @@ def test_missing_contract_version_is_treated_as_supported(session_factory, revis
     assert tags(session_factory, revision_id) == ["M1"]
 
 
-@pytest.mark.parametrize("version", ["0.2", "1.0", "", "0.1.0", "latest"])
+@pytest.mark.parametrize("version", ["0.1", "1.0", "", "0.1.0", "latest"])
 def test_unsupported_contract_version_is_a_400_naming_the_supported_one(session_factory, revision_id, version):
     with session_factory() as s:
         with pytest.raises(ExpectedItemsError) as e:
             replace_from_submission(s, revision_id, ExpectedItemsSubmission(
                 contract_version=version, items=[ExpectedItem(tag="A")]))
     assert e.value.status_code == 400
-    assert "'0.1'" in e.value.detail and "Unsupported contract_version" in e.value.detail
+    assert "'0.2'" in e.value.detail and "Unsupported contract_version" in e.value.detail
 
 
 # ---------- duplicate tags ----------

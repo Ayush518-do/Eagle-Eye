@@ -10,6 +10,8 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from collections.abc import Iterable
+
 
 class ModelUnavailableError(RuntimeError):
     """Raised when a model or its weights are not configured.
@@ -110,6 +112,23 @@ def detect_components(image_path: str) -> dict:
     return result
 
 
-def read_tags(image_path: str) -> dict:
-    """Cabinet photo -> contract B with kind='tag_label'."""
-    raise ModelUnavailableError("Tag reader not implemented yet (ML drawing/OCR branch).")
+def read_tags(
+    image_path: str,
+    expected_tags: Iterable[str] | None = None,
+    image_id: str | None = None,
+) -> dict:
+    """Return OCR observations, optionally resolving labels against drawing tags.
+
+    ``expected_tags`` is optional for compatibility with existing one-argument
+    callers. Supplying drawing tags enables conservative lookalike matching;
+    unresolved and ambiguous text remains uncorrected for review. ``image_id``
+    allows the producer to preserve the service's image key instead of deriving
+    it from the path stem.
+    """
+    from ml.ocr.read_tags import read_tags as read_tags_for_image
+
+    return read_tags_for_image(
+        image_path,
+        expected=expected_tags,
+        image_id=image_id,
+    )

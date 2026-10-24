@@ -126,6 +126,18 @@ Everything a model (or a person) sees in a photo is an **observation**.
       "raw_text": "C811",
       "text_confidence": 0.97,
       "model": { "name": "rapidocr", "version": "…", "weights_sha256": null }
+    },
+    {
+      "observation_id": "OBS-003",
+      "source": "ocr",
+      "kind": "rating",
+      "class_name": "rating",
+      "bbox": [1210, 830, 1280, 862],
+      "confidence": null,
+      "text": null,
+      "raw_text": "16 A",
+      "text_confidence": 0.94,
+      "model": { "name": "rapidocr", "version": "…", "weights_sha256": null }
     }
   ]
 }
@@ -134,18 +146,26 @@ Everything a model (or a person) sees in a photo is an **observation**.
 - `source`: `detector` (trained), `zero_shot` (pretrained, from a text prompt), `ocr`, `manual`
   (drawn by a person), or `synthetic` (tests only, never in a real result).
 - `kind`: `component` (a box around a part), `tag_label` (a box around a printed tag), or
-  `rating_text` (a box around rating text such as "16A").
-- `raw_text` is exactly what was read. `text` is the tag it was matched to. Keep both.
-- `confidence` = how sure that something is there. `text_confidence` = how sure of the characters.
-- An empty list is valid. It means "nothing found", **not** "missing".
+  `rating` (a box around rating text such as "16A"; also called `rating_text` in older code).
+- For `kind: "tag_label"`, `raw_text` is exactly what OCR read and `text` is the tag it was matched to.
+  For `kind: "rating"`, `raw_text` is the exact OCR rating text and `text` is null. Rating
+  observations are explicitly distinguished from tag-label observations; arbitrary tag OCR is not a rating.
+- Rating observations use `source: "ocr"`, `class_name: "rating"`, and the OCR text's `bbox`.
+- `confidence` = how sure the step is that something is there. `text_confidence` = how sure the
+  reader is of the characters. Keep them separate.
+- An empty `observations` list is a valid answer. It means "nothing found", **not** "missing".
 
 Python entry points (ML implements, backend calls):
 
 ```python
-# ml/interfaces.py
-def parse_drawing(pdf_path: str) -> dict: ...          # contract A
-def detect_components(image_path: str) -> dict: ...    # contract B, kind="component"
-def read_tags(image_path: str) -> dict: ...            # contract B, kind="tag_label" / "rating_text"
+# ml/interfaces.py (Part 1 and Part 2 implement; Part 3 calls)
+def parse_drawing(pdf_path: str) -> dict: ...          # returns contract A
+def detect_components(image_path: str) -> dict: ...    # returns contract B, kind="component"
+def read_tags(
+    image_path: str,
+    expected_tags: list[str] | None = None,
+    image_id: str | None = None,
+) -> dict: ...  # contract B tag_label/rating observations; expected tags enable matching
 ```
 
 A model that isn't available raises `ModelUnavailableError` with a plain message. It never returns

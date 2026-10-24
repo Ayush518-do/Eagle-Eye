@@ -1,0 +1,6 @@
+# Starting thresholds from docs/team/inspection-engine.md; not tuned on cabinet photos.
+min_text_confidence: 0.80
+min_detector_confidence: 0.50
+min_photo_width: 1600
+min_sharpness: 100.0
+max_overexposed_fraction: 0.15

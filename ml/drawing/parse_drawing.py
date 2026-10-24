@@ -30,7 +30,7 @@ from pathlib import Path
 import pdfplumber
 
 PARSER_VERSION = "drawing-parser 0.2.0"
-CONTRACT_VERSION = "0.3"
+CONTRACT_VERSION = "0.2"
 
 # Tags of the components we inspect. Terminal blocks (X..), sockets etc. are left out on purpose.
 COMPONENT_TAG = re.compile(r"^(CB\d{1,3}|DS\d{1,3}|PS\d{1,3}|D\d{2}|RCCB\d{1,2})$")

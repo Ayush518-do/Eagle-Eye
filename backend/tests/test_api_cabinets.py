@@ -75,7 +75,7 @@ def test_expected_items_replace_not_append_and_read_back_contract_a_shape(api):
          "source_page": 3}, {"tag": "PS11"}]}
     r = api.post(f"/api/design-revisions/{rid}/expected-items", json=first)
     assert r.status_code == 201
-    assert r.json()["contract_version"] == "0.1" and r.json()["parser_version"] == "drawing-parser 0.1.0"
+    assert r.json()["contract_version"] == "0.2" and r.json()["parser_version"] == "drawing-parser 0.1.0"
     assert r.json()["items"][0]["rating"]["page"] == 5 and r.json()["items"][1]["rating"] is None
     manual = api.post(f"/api/design-revisions/{rid}/expected-items", json={"items": [{"tag": " x1 "}]})
     assert manual.status_code == 201

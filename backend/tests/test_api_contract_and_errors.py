@@ -117,7 +117,7 @@ def test_expected_item_service_errors_are_plain_strings(api):
     url = f"/api/design-revisions/{rid}/expected-items"
     assert_plain(api.post(url, json={"items": [{"tag": "A"}, {"tag": "a "}]}), 400, "Duplicate tags")
     assert_plain(api.post(url, json={"items": [{"tag": " "}]}), 400, "blank")
-    assert_plain(api.post(url, json={"contract_version": "7", "items": []}), 400, "'0.1'")
+    assert_plain(api.post(url, json={"contract_version": "7", "items": []}), 400, "'0.2'")
     assert_plain(api.post(url, json={"drawing_file_sha256": "00" * 32, "items": []}), 409, "does not match")
 
 

@@ -97,8 +97,8 @@ def read_raw(image: Image.Image, tile: int = 1280, overlap: float = 0.25, rotati
                     pts = [(cw - 1 - v, u) for u, v in pts]
                 xs = [p[0] + x0 for p in pts]
                 ys = [p[1] + y0 for p in pts]
-                out.append({"text": text, "score": float(score), "rotation": rot,
-                            "bbox": [min(xs), min(ys), max(xs), max(ys)]})
+                out.append({"text": text, "score": 0.0 if score is None else float(score),
+                            "rotation": rot, "bbox": [min(xs), min(ys), max(xs), max(ys)]})
     return out
 
 
@@ -141,7 +141,7 @@ def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_i
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     tags = find_tags(image, expected, **kw)
     return {
-        "contract_version": "0.3",
+        "contract_version": "0.2",
         "image_id": image_id or path.stem,
         "image_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "image_size": [image.width, image.height],
