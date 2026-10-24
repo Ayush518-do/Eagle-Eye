@@ -518,6 +518,33 @@ export default function Results() {
                     {finding.reason && (
                       <div className="finding-reason">{finding.reason}</div>
                     )}
+
+                    {/* Sources & Evidence Score (Milestone 4) */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: '8px' }}>
+                      <div className="source-badges">
+                        {(finding.sources && finding.sources.length > 0 ? finding.sources : ['detector', 'ocr']).map((src) => (
+                          <span key={src} className={`source-badge source-${src}`}>
+                            {src === 'zero_shot' ? 'Zero-shot' : src}
+                          </span>
+                        ))}
+                      </div>
+
+                      {finding.evidence_score != null && (
+                        <div className="evidence-score-container" title={`Evidence agreement score: ${(finding.evidence_score * 100).toFixed(0)}%`}>
+                          <span>Score:</span>
+                          <div className="evidence-bar-track">
+                            <div
+                              className="evidence-bar-fill"
+                              style={{
+                                width: `${Math.min(Math.max(finding.evidence_score * 100, 10), 100)}%`,
+                                backgroundColor: finding.evidence_score > 0.7 ? 'var(--color-status-approved)' : finding.evidence_score > 0.4 ? 'var(--color-accent)' : 'var(--color-status-mismatch)',
+                              }}
+                            />
+                          </div>
+                          <span style={{ fontWeight: 600 }}>{(finding.evidence_score * 100).toFixed(0)}%</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })

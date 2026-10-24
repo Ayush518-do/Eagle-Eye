@@ -50,6 +50,8 @@
         ],
         "status": "potential_mismatch",
         "reason": "Drawing specifies 10A MCB, but photo OCR detected 16A marking.",
+        "sources": ["ocr", "detector"],
+        "evidence_score": 0.88,
         "design_revision_id": "REV-B",
         "reviews": [
           {
@@ -81,6 +83,8 @@
           { "image_id": "IMG-001", "bbox": [340, 220, 480, 680] }
         ],
         "status": "needs_review",
+        "sources": ["detector", "ocr"],
+        "evidence_score": 0.65,
         "reason": "Low OCR reading confidence on breaker label.",
         "design_revision_id": "REV-B",
         "reviews": []
@@ -106,6 +110,8 @@
           { "image_id": "IMG-001", "bbox": [540, 200, 880, 720] }
         ],
         "status": "verified",
+        "sources": ["detector", "ocr", "zero_shot"],
+        "evidence_score": 0.96,
         "reason": "Expected power supply verified matching drawing specification.",
         "design_revision_id": "REV-B",
         "reviews": []
@@ -123,6 +129,8 @@
         "observation": null,
         "evidence": [],
         "status": "inconclusive",
+        "sources": [],
+        "evidence_score": null,
         "reason": "Component tag not detected in uploaded views. Area may be partially occluded.",
         "design_revision_id": "REV-B",
         "reviews": []
@@ -148,6 +156,8 @@
           { "image_id": "IMG-001", "bbox": [950, 230, 1180, 690] }
         ],
         "status": "needs_review",
+        "sources": ["detector", "ocr"],
+        "evidence_score": 0.85,
         "reason": "I/O module detected on DIN rail but not present in approved drawing BOM.",
         "design_revision_id": "REV-B",
         "reviews": []
