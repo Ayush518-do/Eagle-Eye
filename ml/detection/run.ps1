@@ -1,6 +1,6 @@
 # Eagle Eye detection pipeline: one command per stage (Windows PowerShell, from the repo folder).
 #
-#   .\ml\detection\run.ps1 setup        # step 0: create .venv-ml, install PyTorch (CUDA) + packages, check GPU
+#   .\ml\detection\run.ps1 setup [-Py 3.12] # step 0: create .venv-ml, install PyTorch (CUDA) + packages, check GPU
 #   .\ml\detection\run.ps1 prelabel-dev # step 1a: OWLv2 on the 2 dev photos only (tune prompts here)
 #   .\ml\detection\run.ps1 prelabel-all # step 1b: OWLv2 on all 5 photos -> Label Studio import file
 #   .\ml\detection\run.ps1 labelstudio  # step 2: start Label Studio (separate .venv-ls)
@@ -14,7 +14,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Stage,
     [double]$Det = 0.3,
     [double]$Zs = 0.15,
-    [string]$Cuda = "cu126"
+    [string]$Cuda = "cu126",
+    [string]$Py = "3.11"
 )
 $ErrorActionPreference = "Stop"
 $Photos = "data/private/company-dataset"
@@ -30,7 +31,7 @@ function Check([string]$what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (
 
 switch ($Stage) {
     "setup" {
-        if (-not (Test-Path ".venv-ml")) { py -3.11 -m venv .venv-ml; Check "Creating .venv-ml (is Python 3.11 installed? try: py -0)" }
+        if (-not (Test-Path ".venv-ml")) { py -$Py -m venv .venv-ml; Check "Creating .venv-ml (is Python $Py installed? list them with: py -0)" }
         . .\.venv-ml\Scripts\Activate.ps1
         python -m pip install --upgrade pip; Check "pip upgrade"
         pip install torch torchvision --index-url "https://download.pytorch.org/whl/$Cuda"; Check "PyTorch install"
@@ -47,7 +48,7 @@ switch ($Stage) {
         python -m ml.detection.prelabel_owlv2 $Photos --out data/private/prelabels --threshold $Zs; Check "OWLv2 (all)"
     }
     "labelstudio" {
-        if (-not (Test-Path ".venv-ls")) { py -3.11 -m venv .venv-ls; . .\.venv-ls\Scripts\Activate.ps1; pip install label-studio; Check "Label Studio install" }
+        if (-not (Test-Path ".venv-ls")) { py -$Py -m venv .venv-ls; . .\.venv-ls\Scripts\Activate.ps1; pip install label-studio; Check "Label Studio install" }
         else { . .\.venv-ls\Scripts\Activate.ps1 }
         $env:LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED = "true"
         $env:LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT = (Resolve-Path "data/private").Path
