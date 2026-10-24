@@ -154,6 +154,16 @@ export default function ImageWithBoxes({
     return CLASS_COLORS[cls] || CLASS_COLORS.default;
   };
 
+  // Stroke style maps to the FIRST source on the box: detector = solid (fine-tuned,
+  // high confidence), zero_shot = long dash (pretrained-text-prompted), ocr = short
+  // dash (tag read), manual = thicker solid. Change regions already carry their own class.
+  const getStrokeDash = (box) => {
+    const src = (box.sources || [])[0];
+    if (src === 'zero_shot') return '10,5';
+    if (src === 'ocr') return '3,3';
+    return '';   // detector, manual, or missing → solid
+  };
+
   const viewBoxWidth = naturalSize.width || 1600;
   const viewBoxHeight = naturalSize.height || 1000;
 
@@ -257,7 +267,7 @@ export default function ImageWithBoxes({
           )}
         </div>
 
-        {/* Component Legend */}
+        {/* Legend — class colours + source stroke style */}
         <div className="viewer-legend">
           <span className="legend-item">
             <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.mcb }} />
@@ -271,11 +281,27 @@ export default function ImageWithBoxes({
             <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.io_module }} />
             <span>I/O</span>
           </span>
+          <span className="legend-sep" aria-hidden="true" />
+          <span className="legend-item" title="Trained RF-DETR detector (fine-tuned on our labels)">
+            <span className="legend-stroke solid" />
+            <span>Detector</span>
+          </span>
+          <span className="legend-item" title="OWLv2 zero-shot detector (pretrained, text-prompted)">
+            <span className="legend-stroke long-dash" />
+            <span>Zero-shot</span>
+          </span>
+          <span className="legend-item" title="OCR tag reader (RapidOCR)">
+            <span className="legend-stroke short-dash" />
+            <span>OCR</span>
+          </span>
           {showGhost && (
-            <span className="legend-item">
-              <span className="legend-swatch" style={{ backgroundColor: 'transparent', border: '2px dashed #9333ea' }} />
-              <span>Ghost (Drawing)</span>
-            </span>
+            <>
+              <span className="legend-sep" aria-hidden="true" />
+              <span className="legend-item">
+                <span className="legend-swatch" style={{ backgroundColor: 'transparent', border: '2px dashed #9333ea' }} />
+                <span>Ghost (Drawing)</span>
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -380,6 +406,7 @@ export default function ImageWithBoxes({
                         height={h}
                         className="svg-box-rect"
                         stroke={strokeColor}
+                        strokeDasharray={getStrokeDash(box)}
                         rx="3"
                         ry="3"
                       />

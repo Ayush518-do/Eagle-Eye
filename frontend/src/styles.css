@@ -790,6 +790,26 @@ code, pre, .mono, .tag-code {
   border-radius: 2px;
 }
 
+/* A thin separator between class and source groups in the viewer legend */
+.legend-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--color-border);
+  margin: 0 4px;
+}
+
+/* Source stroke swatches — matches the SVG box strokeDasharray in ImageWithBoxes */
+.legend-stroke {
+  display: inline-block;
+  width: 20px;
+  height: 2px;
+  background: transparent;
+  border-top: 2px solid var(--color-text-main);
+}
+.legend-stroke.solid { border-top-style: solid; }
+.legend-stroke.long-dash { border-top-style: dashed; }
+.legend-stroke.short-dash { border-top-style: dotted; height: 3px; }
+
 .image-canvas-container {
   position: relative;
   width: 100%;
