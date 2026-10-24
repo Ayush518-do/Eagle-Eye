@@ -12,8 +12,10 @@ import {
   RefreshCw,
   Clock,
   Layers,
+  Printer,
+  QrCode,
 } from 'lucide-react';
-import { getQualityPassport, getCabinet, getCabinets, syntheticData } from '../api.js';
+import { getQualityPassport, getCabinet, getCabinets, getCabinetQrUrl, syntheticData } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
 
@@ -103,6 +105,40 @@ export default function CabinetHistory() {
             <PlusCircle size={15} />
             <span>Run New Scan</span>
           </Link>
+        </div>
+      </div>
+
+      {/* QR Traceability Card (§3.2) */}
+      <div className="cabinet-qr-card">
+        <div className="qr-image-frame">
+          <img
+            src={getCabinetQrUrl(cabinetId)}
+            alt={`QR code for cabinet ${cabinetId}`}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23fff"/><rect x="10" y="10" width="30" height="30" fill="%230a1930"/><rect x="15" y="15" width="20" height="20" fill="%23fff"/><rect x="20" y="20" width="10" height="10" fill="%230a1930"/><rect x="60" y="10" width="30" height="30" fill="%230a1930"/><rect x="65" y="15" width="20" height="20" fill="%23fff"/><rect x="70" y="20" width="10" height="10" fill="%230a1930"/><rect x="10" y="60" width="30" height="30" fill="%230a1930"/><rect x="15" y="65" width="20" height="20" fill="%23fff"/><rect x="20" y="70" width="10" height="10" fill="%230a1930"/><rect x="50" y="50" width="15" height="15" fill="%230a1930"/><rect x="70" y="70" width="20" height="20" fill="%230a1930"/></svg>';
+            }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <QrCode size={16} color="var(--color-navy)" />
+            <strong style={{ fontSize: '14px', color: 'var(--color-navy)' }}>Physical Asset Traceability QR</strong>
+          </div>
+          <p className="page-desc" style={{ margin: '4px 0 10px', fontSize: '12px' }}>
+            Scan on the factory floor with a mobile device to open this cabinet's quality passport ({window.location.origin}/cabinets/{cabinetId}).
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              window.print();
+            }}
+            title="Print factory label with QR code"
+          >
+            <Printer size={13} />
+            <span>Print Label</span>
+          </button>
         </div>
       </div>
 

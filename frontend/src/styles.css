@@ -1289,6 +1289,43 @@ code, pre, .mono, .tag-code {
   }
 }
 
+/* Printable QR Label (§3.2) */
+.cabinet-qr-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.qr-image-frame {
+  width: 100px;
+  height: 100px;
+  background-color: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.qr-image-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@media (max-width: 480px) {
+  .cabinet-qr-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* Print Stylesheet (§2.5) */
 @media print {
   body {

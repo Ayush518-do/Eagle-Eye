@@ -158,6 +158,10 @@ export async function getAnalytics(from, to) {
   }
 }
 
+// QR Traceability (§3.2)
+export const getCabinetQrUrl = (cabinetId) =>
+  `${API_URL}/api/cabinets/${encodeURIComponent(cabinetId)}/qr`;
+
 // Helper to provide synthetic fallbacks when backend endpoints return 404 or are unreachable
 export { syntheticData };
 
