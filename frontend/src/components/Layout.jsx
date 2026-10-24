@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { ShieldCheck, PlusCircle, LayoutDashboard, Cpu, Server } from 'lucide-react';
+import { ShieldCheck, PlusCircle, LayoutDashboard, Cpu, Server, BarChart3 } from 'lucide-react';
 import { getModelStatus, getHealth } from '../api.js';
 
 export default function Layout() {
@@ -81,6 +81,12 @@ export default function Layout() {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                   <Server size={15} />
                   <span>Cabinets</span>
+                </span>
+              </NavLink>
+              <NavLink to="/analytics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <BarChart3 size={15} />
+                  <span>Analytics</span>
                 </span>
               </NavLink>
             </nav>

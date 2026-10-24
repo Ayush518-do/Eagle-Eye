@@ -6,6 +6,7 @@ import NewInspection from './pages/NewInspection.jsx';
 import Results from './pages/Results.jsx';
 import CabinetList from './pages/CabinetList.jsx';
 import CabinetHistory from './pages/CabinetHistory.jsx';
+import Analytics from './pages/Analytics.jsx';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/inspections/:inspectionId" element={<Results />} />
           <Route path="/cabinets" element={<CabinetList />} />
           <Route path="/cabinets/:cabinetId" element={<CabinetHistory />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route
             path="*"
             element={

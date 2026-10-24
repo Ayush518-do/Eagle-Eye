@@ -142,6 +142,22 @@ export function downloadFindingsCsv(inspectionId, findings = []) {
   document.body.removeChild(link);
 }
 
+// Analytics (§3.1, contract D)
+export async function getAnalytics(from, to) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  try {
+    return await request(`/api/analytics${query}`);
+  } catch (err) {
+    if (err.isUnavailable || err.status === 404) {
+      return syntheticData.analytics;
+    }
+    throw err;
+  }
+}
+
 // Helper to provide synthetic fallbacks when backend endpoints return 404 or are unreachable
 export { syntheticData };
 

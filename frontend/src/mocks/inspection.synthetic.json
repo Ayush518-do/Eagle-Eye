@@ -236,5 +236,39 @@
         "summary": "CB11 rating mismatch detected (16A instead of 10A)"
       }
     ]
+  },
+  "analytics": {
+    "inspections": 12,
+    "overall": {
+      "pass": 5,
+      "review_required": 6,
+      "mismatch_detected": 1
+    },
+    "findings_by_type": {
+      "missing": 4,
+      "unexpected": 1,
+      "rating_mismatch": 2,
+      "order_changed": 3,
+      "type_mismatch": 0
+    },
+    "top_flagged_tags": [
+      { "tag": "CB14", "count": 3, "component_type": "mcb" },
+      { "tag": "PS11", "count": 2, "component_type": "power_supply" },
+      { "tag": "CB11", "count": 2, "component_type": "mcb" },
+      { "tag": "IO29", "count": 1, "component_type": "io_module" }
+    ],
+    "review_outcomes": {
+      "confirmed_by_reviewer": 4,
+      "rejected_by_reviewer": 2,
+      "pending": 5
+    },
+    "per_day": [
+      { "date": "2026-10-20", "inspections": 2, "mismatch_detected": 0 },
+      { "date": "2026-10-21", "inspections": 1, "mismatch_detected": 0 },
+      { "date": "2026-10-22", "inspections": 3, "mismatch_detected": 0 },
+      { "date": "2026-10-23", "inspections": 3, "mismatch_detected": 1 },
+      { "date": "2026-10-24", "inspections": 3, "mismatch_detected": 0 }
+    ]
   }
 }
+
