@@ -1,0 +1,10 @@
+<!-- Paste into Label Studio: Project > Settings > Labeling Interface > Code -->
+<View>
+  <Header value="Draw a tight box around each whole part. Skip parts you can't see clearly."/>
+  <Image name="image" value="$image" zoom="true" zoomControl="true" rotateControl="false"/>
+  <RectangleLabels name="label" toName="image" canRotate="false">
+    <Label value="power_supply" background="#1f5eff"/>
+    <Label value="mcb" background="#cf222e"/>
+    <Label value="io_module" background="#1a7f37"/>
+  </RectangleLabels>
+</View>

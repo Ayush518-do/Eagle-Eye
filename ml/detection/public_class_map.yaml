@@ -1,0 +1,43 @@
+# Public datasets that TRAIN the detector (train/valid only, never test).
+# Download each from Roboflow Universe as "COCO" format and unzip into data/external/<folder name>/
+# (folder name = the key below). Each must contain train/ and valid/ with _annotations.coco.json.
+# A folder that isn't there is skipped with a warning, so start with one or two.
+#
+# Map: <their class name>: <our class name>. Classes not listed are ignored (a warning lists them).
+# Spelling differences ("2-Pole-Circuit-Breaker" vs "2 pole circuit breaker") are handled.
+#
+# All four are CC BY 4.0: credit the ones you use (README "Credits").
+# BEFORE training, look at ~10 images of each. Keep a dataset only if its breakers look like ours
+# (DIN-rail breakers, boxed one device per box). Delete its block below if not.
+
+# 1. Panel photos with breakers (closest to our photos)
+#    https://universe.roboflow.com/parking-detection-nfmxg/audit-panel
+# Checked 2026-10-24: North-American plug-in breakers (black, household load centres), a different
+# kind of breaker from our DIN-rail ones. Left out on purpose.
+# audit-panel:
+#   circuit breaker: mcb
+
+# 2. Breakers by number of poles
+#    https://universe.roboflow.com/mahmoud-wali/circuitbreakerdetection
+#    Checked 2026-10-24: DIN-rail breakers in real cabinets, closest match (version 2, 10,488 train boxes).
+circuitbreakerdetection:
+  1 Pole Circuit Breaker: mcb
+  2 Pole Circuit Breaker: mcb
+  3 Pole Circuit Breaker: mcb
+  4 pole circuit breaker: mcb
+
+# 3. Distribution boards (mostly household), several breaker types
+#    https://universe.roboflow.com/control-panel-azure/control-panels
+# Checked 2026-10-24: no downloadable version is published, so it can't be used.
+# control-panels:
+#   circuit breaker 1-pole: mcb
+#   circuit breaker 2-pole: mcb
+#   circuit breaker 3-pole: mcb
+#   circuit breaker 3-pole 32A: mcb
+#   RCBO 1-pole: mcb
+
+# 4. Mixed electrical equipment (check carefully: some images may be diagrams)
+#    https://universe.roboflow.com/vit-atwcp/electrical-devices
+#    Checked 2026-10-24: catalogue product photos of DIN-rail breakers (version 3, 211 MCB train boxes). Kept for variety.
+electrical-devices:
+  MCB: mcb
