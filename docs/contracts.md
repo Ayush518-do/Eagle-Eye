@@ -73,6 +73,7 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
       "bbox": [1210, 790, 1280, 822],
       "confidence": 0.93,
       "text": "CB11",
+      "raw_text": "C811",
       "text_confidence": 0.97,
       "model": { "name": "rapidocr", "version": "…", "weights_sha256": null }
     }
@@ -81,6 +82,7 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
 ```
 
 - `source` is one of `detector`, `ocr`, `manual` (drawn by a person) or `synthetic` (test data only).
+- `raw_text` is exactly what OCR read; `text` is the tag it was matched to. Keep both so corrections are visible.
 - `confidence` is how sure the step is that something is there; `text_confidence` is how sure the
   reader is of the characters. Keep them separate.
 - An empty `observations` list is a valid answer. It means "nothing found", not "missing".
