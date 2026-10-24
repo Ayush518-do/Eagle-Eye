@@ -4,6 +4,7 @@ The file type is decided from the file's first bytes (its "magic number"), not f
 name the user gave it, so `virus.exe` renamed to `photo.jpg` is rejected.
 """
 import hashlib
+import re
 import uuid
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -46,3 +47,26 @@ def save_upload(data: bytes, original_name: str, upload_dir: Path, max_mb: int) 
         "size_bytes": len(data),
         "sha256": hashlib.sha256(data).hexdigest(),
     }
+
+
+_STORED_ID = re.compile(r"^[0-9a-f]{32}$")
+_MEDIA_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".pdf": "application/pdf"}
+
+
+def find_upload(upload_dir: Path, file_id: str) -> tuple[Path, str] | None:
+    """The stored file for an id we generated, with its content type; None if it is not there.
+    Ids that are not 32 hex characters are never turned into a path."""
+    if not _STORED_ID.match(file_id):
+        return None
+    for ext, media_type in _MEDIA_TYPES.items():
+        path = upload_dir / f"{file_id}{ext}"
+        if path.is_file():
+            return path, media_type
+    return None
+
+
+def remove_upload(upload_dir: Path, file_id: str) -> None:
+    """Delete a file we just saved, used when the database write that follows it fails."""
+    found = find_upload(upload_dir, file_id)
+    if found:
+        found[0].unlink(missing_ok=True)

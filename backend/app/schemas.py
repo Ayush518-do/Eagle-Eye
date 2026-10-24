@@ -7,7 +7,7 @@ If you change a model here, update docs/contracts.md in the same pull request.
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CONTRACT_VERSION = "0.1"
 
@@ -46,6 +46,17 @@ class DrawingParseResult(BaseModel):
     contract_version: str = CONTRACT_VERSION
     drawing_file_sha256: Optional[str] = None
     parser_version: str
+    items: list[ExpectedItem]
+
+
+class ExpectedItemsSubmission(BaseModel):
+    """Request body for storing expected items. Accepts every valid `DrawingParseResult`;
+    a hand-typed list may also leave out `parser_version`. `contract_version` is accepted as
+    any string here and checked by the service, so an unsupported one is a 400, not a 422."""
+
+    contract_version: str = CONTRACT_VERSION
+    drawing_file_sha256: Optional[str] = None
+    parser_version: Optional[str] = None
     items: list[ExpectedItem]
 
 
@@ -135,6 +146,112 @@ class ReviewDecision(BaseModel):
     decision: Literal["confirmed_by_reviewer", "rejected_by_reviewer"]
     reviewer: str = Field(min_length=1)
     note: str = ""
+
+
+# ---------- API requests and responses ----------
+# NOT in docs/contracts.md yet. docs/team/backend.md names these endpoints but gives no body or
+# response shapes for them; the fields below are taken from the doc's examples and from what
+# frontend/src/api.js already reads (`cabinet_id`). They are proposals pending team review.
+InspectionState = Literal["queued", "running", "done", "failed"]
+
+
+class CabinetCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    # Used in URLs, so no slashes or spaces.
+    cabinet_id: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    name: str = Field(min_length=1, max_length=200)
+
+
+class CabinetOut(BaseModel):
+    cabinet_id: str
+    name: str
+    created_at: datetime
+
+
+class CabinetSummary(CabinetOut):
+    latest_inspection_id: Optional[str] = None
+    latest_inspection_state: Optional[InspectionState] = None
+    latest_overall_status: Optional[OverallStatus] = None  # current status; null until a run is done
+
+
+class DesignRevisionOut(BaseModel):
+    design_revision_id: str
+    cabinet_id: str
+    label: str
+    drawing_sha256: str
+    parser_version: Optional[str] = None
+    created_at: datetime
+
+
+class CabinetDetail(CabinetOut):
+    design_revisions: list[DesignRevisionOut]
+
+
+class InspectionAccepted(BaseModel):
+    inspection_id: str
+    state: InspectionState
+
+
+class InspectionDetail(InspectionResult):
+    """Contract C plus `state` and `error`. `overall_status` is null until the run is done."""
+
+    overall_status: Optional[OverallStatus] = None
+    # `design_revision_id` carries the display label as in Contract C; this is the internal id
+    # (the one used in URLs and in the create-inspection form).
+    design_revision_internal_id: Optional[str] = None
+    previous_inspection_id: Optional[str] = None  # set on a reinspection
+    state: InspectionState
+    error: Optional[str] = None
+
+
+class ReviewEventOut(BaseModel):
+    finding_id: str
+    decision: Literal["confirmed_by_reviewer", "rejected_by_reviewer"]
+    reviewer: str
+    note: str
+    created_at: datetime
+
+
+class ReinspectionAccepted(InspectionAccepted):
+    previous_inspection_id: str
+
+
+class PassportImage(BaseModel):
+    image_id: str
+    sha256: str
+    width: int
+    height: int
+    quality_flags: list[str]
+
+
+class PassportFinding(BaseModel):
+    finding_id: str
+    type: str
+    tag: Optional[str] = None
+    original_status: str  # what the engine reported; never changes
+    current_status: str  # after the latest review event, if any
+    reason: Optional[str] = None
+
+
+class PassportInspection(BaseModel):
+    inspection_id: str
+    state: InspectionState
+    error: Optional[str] = None
+    created_at: datetime
+    design_revision_id: str  # display label, as in Contract C
+    design_revision_internal_id: str
+    previous_inspection_id: Optional[str] = None
+    overall_status: Optional[OverallStatus] = None  # current; null unless the run is done
+    engine_overall_status: Optional[str] = None  # as stored when the run finished
+    images: list[PassportImage]
+    findings: list[PassportFinding]
+    review_events: list[ReviewEventOut]  # oldest first
+
+
+class QualityPassport(BaseModel):
+    cabinet_id: str
+    name: str
+    inspections: list[PassportInspection]  # oldest first; [] when there are none
 
 
 # ---------- System ----------
