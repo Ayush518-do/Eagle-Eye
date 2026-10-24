@@ -114,6 +114,34 @@ export async function getQualityPassport(cabinetId) {
   return request(`/api/cabinets/${encodeURIComponent(cabinetId)}/quality-passport`);
 }
 
+// Report and Export (§2.5)
+export const getReportUrl = (inspectionId) =>
+  `${API_URL}/api/inspections/${encodeURIComponent(inspectionId)}/report`;
+
+export const getExportCsvUrl = (inspectionId) =>
+  `${API_URL}/api/inspections/${encodeURIComponent(inspectionId)}/export.csv`;
+
+export function downloadFindingsCsv(inspectionId, findings = []) {
+  const headers = ['Finding ID', 'Type', 'Tag', 'Status', 'Expected Rating', 'Observed Reading', 'Reason'];
+  const rows = findings.map((f) => [
+    f.finding_id,
+    f.type || '',
+    f.tag || f.observed_tag || f.expected_tag || '',
+    f.status || '',
+    `"${(f.expected_rating || f.expected_value || '').replace(/"/g, '""')}"`,
+    `"${(f.observed_rating || f.observed_text || '').replace(/"/g, '""')}"`,
+    `"${(f.reason || '').replace(/"/g, '""')}"`,
+  ]);
+  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `inspection-${inspectionId}-findings.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // Helper to provide synthetic fallbacks when backend endpoints return 404 or are unreachable
 export { syntheticData };
 

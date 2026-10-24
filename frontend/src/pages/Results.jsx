@@ -13,12 +13,17 @@ import {
   Layers,
   ArrowLeft,
   ExternalLink,
+  Download,
+  FileText,
 } from 'lucide-react';
 import {
   getInspection,
   reviewFinding,
   requestReinspection,
   syntheticData,
+  getReportUrl,
+  getExportCsvUrl,
+  downloadFindingsCsv,
 } from '../api.js';
 import ImageWithBoxes from '../components/ImageWithBoxes.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -293,7 +298,36 @@ export default function Results() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <a
+            href={getReportUrl(data?.inspection_id || inspectionId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary"
+            title="Open printable inspection report (GET /api/inspections/{id}/report)"
+          >
+            <FileText size={14} />
+            <span>Download Report</span>
+          </a>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              const url = getExportCsvUrl(data?.inspection_id || inspectionId);
+              fetch(url)
+                .then((res) => {
+                  if (!res.ok) throw new Error('Backend export unavailable');
+                  window.location.href = url;
+                })
+                .catch(() => {
+                  downloadFindingsCsv(data?.inspection_id || inspectionId, findings);
+                });
+            }}
+            title="Export findings as CSV (GET /api/inspections/{id}/export.csv)"
+          >
+            <Download size={14} />
+            <span>Export CSV</span>
+          </button>
           <Link to={`/cabinets/${cabinetId}`} className="btn btn-secondary">
             <span>Quality Passport</span>
             <ExternalLink size={14} />

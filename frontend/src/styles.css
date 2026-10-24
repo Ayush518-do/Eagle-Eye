@@ -1227,3 +1227,57 @@ code, pre, .mono, .tag-code {
   }
 }
 
+/* Print Stylesheet (§2.5) */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+  }
+
+  .topbar,
+  .site-footer,
+  .btn,
+  .viewer-controls,
+  .synthetic-banner,
+  .findings-filter-bar,
+  .modal-overlay,
+  .no-print {
+    display: none !important;
+  }
+
+  .shell {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .results-workspace {
+    display: block !important;
+  }
+
+  .image-canvas-container {
+    height: auto !important;
+    max-height: 400px;
+    background-color: #ffffff !important;
+  }
+
+  .findings-list {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .panel, .arrangement-card, .finding-card {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    margin-bottom: 12px !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+}
+
+
