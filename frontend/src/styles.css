@@ -331,6 +331,38 @@ code, pre, .mono, .tag-code {
   color: var(--color-text-muted);
 }
 
+/* Compact counts pills in the inspection header */
+.counts-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.counts-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--color-surface-subtle);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-subtle);
+}
+.counts-pill strong { font-weight: 700; color: var(--color-text-main); }
+.counts-pill span { text-transform: capitalize; letter-spacing: 0.02em; }
+.counts-pill.cp-verified { background: var(--color-status-approved-bg); color: var(--color-status-approved); border-color: transparent; }
+.counts-pill.cp-verified strong { color: var(--color-status-approved); }
+.counts-pill.cp-potential_mismatch,
+.counts-pill.cp-needs_review { background: var(--color-status-review-bg); color: var(--color-status-review); border-color: transparent; }
+.counts-pill.cp-potential_mismatch strong,
+.counts-pill.cp-needs_review strong { color: var(--color-status-review); }
+.counts-pill.cp-inconclusive { background: var(--color-status-inconclusive-bg); color: var(--color-status-inconclusive); border-color: transparent; }
+.counts-pill.cp-inconclusive strong { color: var(--color-status-inconclusive); }
+.counts-pill.cp-confirmed_by_reviewer { background: var(--color-status-approved-bg); color: var(--color-status-approved); border-color: transparent; }
+.counts-pill.cp-rejected_by_reviewer { background: var(--color-status-mismatch-bg); color: var(--color-status-mismatch); border-color: transparent; }
+
 /* Horizontal status "pipe" strip summarising pass/review/mismatch mix */
 .status-pipe {
   display: flex;
@@ -872,18 +904,39 @@ code, pre, .mono, .tag-code {
   border-radius: var(--radius-sm);
   padding: 14px;
   cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.finding-card::before {
+  /* Thin left-edge accent coloured by finding status */
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+  background: var(--color-border);
+  transition: background 0.15s;
 }
 
 .finding-card:hover {
-  border-color: #a4b3c4;
+  border-color: var(--color-navy-light);
+  box-shadow: 0 1px 3px rgba(16, 40, 70, 0.08);
 }
 
 .finding-card.selected {
   border-color: var(--color-navy);
-  background-color: #f1f6fc;
+  background-color: var(--color-blue-50);
   box-shadow: 0 0 0 1px var(--color-navy);
 }
+
+.finding-card.verified::before,
+.finding-card.confirmed_by_reviewer::before { background: var(--color-status-approved); }
+.finding-card.potential_mismatch::before,
+.finding-card.needs_review::before { background: var(--color-status-review); }
+.finding-card.inconclusive::before { background: var(--color-status-inconclusive); }
+.finding-card.rejected_by_reviewer::before { background: var(--color-status-mismatch); }
 
 .finding-header {
   display: flex;
@@ -959,24 +1012,34 @@ code, pre, .mono, .tag-code {
 .evidence-score-container {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 11.5px;
   color: var(--color-text-muted);
   margin-top: 6px;
+  font-weight: 600;
+}
+.evidence-score-container::after {
+  content: attr(data-pct);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-main);
+  min-width: 32px;
+  text-align: right;
 }
 
 .evidence-bar-track {
-  width: 60px;
-  height: 6px;
-  background-color: #e1e4e8;
-  border-radius: 2px;
+  width: 90px;
+  height: 7px;
+  background-color: var(--color-border-subtle);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .evidence-bar-fill {
   height: 100%;
   background-color: var(--color-status-approved);
-  border-radius: 2px;
+  border-radius: 999px;
+  transition: width 0.3s ease;
 }
 
 .comp-item-label {
@@ -1011,16 +1074,19 @@ code, pre, .mono, .tag-code {
 .wizard-steps {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 24px;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 16px;
+  padding: 14px 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-flat);
 }
 
 .wizard-step {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -1035,26 +1101,29 @@ code, pre, .mono, .tag-code {
 }
 
 .step-num {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   font-size: 12px;
   font-weight: 700;
-  border: 1px solid var(--color-border);
-  background-color: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  background-color: var(--color-surface-subtle);
+  color: var(--color-text-muted);
+  transition: all 0.2s ease;
 }
 
 .wizard-step.active .step-num {
   background-color: var(--color-navy);
   color: #ffffff;
   border-color: var(--color-navy);
+  box-shadow: 0 0 0 4px var(--color-blue-50);
 }
 
 .wizard-step.completed .step-num {
-  background-color: var(--color-status-approved-bg);
-  color: var(--color-status-approved);
+  background-color: var(--color-status-approved);
+  color: #ffffff;
   border-color: var(--color-status-approved);
 }
 
@@ -1062,16 +1131,17 @@ code, pre, .mono, .tag-code {
 .dropzone {
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 32px 20px;
+  padding: 40px 20px;
   text-align: center;
-  background-color: #fafbfc;
+  background-color: var(--color-surface-subtle);
   cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, transform 0.15s;
 }
 
 .dropzone:hover, .dropzone.drag-active {
   border-color: var(--color-navy);
-  background-color: #f1f6fc;
+  background-color: var(--color-blue-50);
+  transform: translateY(-1px);
 }
 
 .dropzone-icon {
@@ -1121,10 +1191,10 @@ code, pre, .mono, .tag-code {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 25, 48, 0.8);
+  background: linear-gradient(to top, rgba(0, 75, 141, 0.9), rgba(0, 75, 141, 0));
   color: #ffffff;
   font-size: 10px;
-  padding: 3px 6px;
+  padding: 10px 6px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

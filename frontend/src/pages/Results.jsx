@@ -393,13 +393,26 @@ export default function Results() {
               INSPECTION {data?.inspection_id || inspectionId}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <h1 className="page-title">Detection & BOM Verification</h1>
             <StatusBadge status={overallStatus} />
           </div>
           <p className="page-desc">
             Enclosure: <strong>{data?.cabinet_name || cabinetId}</strong> · Revision: <span className="mono">{data?.design_revision_id || 'REV-A'}</span> · Scanned {new Date(data?.created_at || Date.now()).toLocaleString()}
           </p>
+          {/* Counts summary — tiny chips so the operator sees the outcome without scrolling */}
+          {data?.counts && Object.keys(data.counts).length > 0 && (
+            <div className="counts-pills" aria-label="Finding counts">
+              {['verified', 'potential_mismatch', 'needs_review', 'inconclusive', 'confirmed_by_reviewer', 'rejected_by_reviewer'].map((k) => (
+                data.counts[k] ? (
+                  <span key={k} className={`counts-pill cp-${k}`}>
+                    <strong>{data.counts[k]}</strong>
+                    <span>{k.replace(/_/g, ' ')}</span>
+                  </span>
+                ) : null
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -557,7 +570,7 @@ export default function Results() {
                 return (
                   <div
                     key={finding.finding_id}
-                    className={`finding-card ${isSelected ? 'selected' : ''}`}
+                    className={`finding-card ${finding.status || ''} ${isSelected ? 'selected' : ''}`}
                     onClick={() => setSelectedFindingId(finding.finding_id)}
                     role="option"
                     aria-selected={isSelected}
@@ -608,14 +621,18 @@ export default function Results() {
                       </div>
 
                       {finding.evidence_score != null && (
-                        <div className="evidence-score-container" title={`Evidence agreement score: ${(finding.evidence_score * 100).toFixed(0)}%`}>
-                          <span>Score:</span>
+                        <div
+                          className="evidence-score-container"
+                          data-pct={`${(finding.evidence_score * 100).toFixed(0)}%`}
+                          title={`Evidence agreement score: ${(finding.evidence_score * 100).toFixed(0)}%`}
+                        >
+                          <span>Score</span>
                           <div className="evidence-bar-track">
                             <div
                               className="evidence-bar-fill"
                               style={{
-                                width: `${Math.min(Math.max(finding.evidence_score * 100, 10), 100)}%`,
-                                backgroundColor: finding.evidence_score > 0.7 ? 'var(--color-status-approved)' : finding.evidence_score > 0.4 ? 'var(--color-accent)' : 'var(--color-status-mismatch)',
+                                width: `${Math.min(Math.max(finding.evidence_score * 100, 6), 100)}%`,
+                                backgroundColor: finding.evidence_score > 0.7 ? 'var(--color-status-approved)' : finding.evidence_score > 0.4 ? 'var(--color-status-review)' : 'var(--color-status-mismatch)',
                               }}
                             />
                           </div>
