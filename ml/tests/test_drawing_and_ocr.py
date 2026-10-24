@@ -62,3 +62,156 @@ def test_read_tags_on_generated_label(tmp_path):
     obs = out["observations"][0]
     x1, y1, x2, y2 = obs["bbox"]
     assert x2 > x1 and y2 > y1 and out["image_size"] == [600, 200]
+
+
+# ---------- full drawing parser on a small generated drawing (no company data) ----------
+def _make_drawing(path):
+    from reportlab.pdfgen import canvas
+    c = canvas.Canvas(str(path), pagesize=(612, 792))
+    # page 1: bill of material
+    c.setFont("Helvetica", 7)
+    c.drawString(200, 760, "BILL OF MATERIAL - 1")
+    for x, t in [(50, "ITEM"), (80, "MANUFACTURER"), (180, "MANUFACTURER PART NO."),
+                 (300, "ITEM SHORT DESCRIPTION"), (540, "QTY")]:
+        c.drawString(x, 740, t)
+    rows = [("1", "SCHNEIDER", "A9N2P16C", "ACTI9 MCB, 16A, 2P, C TYPE", "1"),
+            ("2", "SCHNEIDER", "A9N2P10C", "ACTI9 MCB, 10A, 2P, C TYPE", "2"),
+            ("3", "EMERSON", "VE5127", "BULK POWER SUPPLY 24 VDC, 20A", "1"),
+            ("4", "PHOENIX CONTACT", "3001501", "TERMINAL, UK 3 N", "22")]
+    for i, r in enumerate(rows):
+        y = 728 - 12 * i
+        for x, t in zip((52, 80, 180, 300, 542), r):
+            c.drawString(x, y, t)
+    c.showPage()
+    # page 2: schematic. CB11 has a printed rating, CB12/CB13 don't (so the BOM count decides)
+    c.setFont("Helvetica", 6)
+    c.drawString(100, 700, "CB11"); c.setFont("Helvetica", 5); c.drawString(100, 692, "16A TYPE C")
+    c.setFont("Helvetica", 6); c.drawString(100, 640, "CB12"); c.drawString(100, 600, "CB13")
+    c.drawString(250, 700, "PS11"); c.setFont("Helvetica", 5); c.drawString(250, 692, "20A 100-240 VAC")
+    c.showPage()
+    # page 3: general arrangement: callout column (CB11..CB13) and a tiny tag drawn on PS11
+    c.setFont("Helvetica", 7); c.drawString(200, 760, "INTERNAL GENERAL ARRANGEMENT")
+    for i, t in enumerate(["CB11", "CB12", "CB13"]):
+        c.drawString(60, 600 - 9 * i, t)
+    c.setFont("Helvetica", 1.5); c.drawString(420, 500, "PS11")
+    c.save()
+
+
+def test_parse_drawing_full(tmp_path):
+    pdf = tmp_path / "d.pdf"
+    _make_drawing(pdf)
+    out = to_contract(pdf)
+    items = {i["tag"]: i for i in out["items"]}
+    assert set(items) == {"CB11", "CB12", "CB13", "PS11"}
+    # BOM read with all columns
+    assert [r["part_number"] for r in out["bom"]] == ["A9N2P16C", "A9N2P10C", "VE5127", "3001501"]
+    assert out["bom"][3]["manufacturer"] == "PHOENIX CONTACT" and out["bom"][3]["quantity"] == 22
+    # printed ratings
+    assert items["CB11"]["rating"]["value"] == "16 A" and items["CB11"]["rating"]["curve"] == "C"
+    assert items["CB11"]["part_number"] == "A9N2P16C" and items["CB11"]["rating"]["needs_review"] is False
+    assert items["PS11"]["component_type"] == "power_supply" and items["PS11"]["part_number"] == "VE5127"
+    # inferred from BOM count: 2 unrated breakers, exactly one MCB line with 2 free units
+    for t in ("CB12", "CB13"):
+        r = items[t]["rating"]
+        assert r["value"] == "10 A" and r["source"] == "bom_count" and r["needs_review"] is True
+    assert all(k["status"] == "ok" for k in out["bom_checks"])
+    # layout + arrangement
+    assert items["PS11"]["layout"]["anchor"] == "component"
+    assert items["CB11"]["layout"]["anchor"] == "callout"
+    assert [items[t]["arrangement"]["position"] for t in ("CB11", "CB12", "CB13")] == [1, 2, 3]
+    assert items["CB11"]["arrangement"]["direction"] == "top_to_bottom"
+
+
+def test_bom_count_not_inferred_when_ambiguous(tmp_path):
+    """Two MCB lines with room for the unrated breakers -> no guess; rating stays unknown."""
+    from ml.drawing.parse_drawing import link_bom
+    items = [{"tag": "CB1", "component_type": "mcb", "rating": {"value": None, "source": None, "page": None,
+                                                                 "needs_review": True}, "part_number": None, "description": None}]
+    bom = [{"item": 1, "part_number": "A", "description": "MCB, 10A", "quantity": 1, "page": 1},
+           {"item": 2, "part_number": "B", "description": "MCB, 16A", "quantity": 1, "page": 1}]
+    link_bom(items, bom)
+    assert items[0]["rating"]["value"] is None and items[0]["part_number"] is None
+
+
+# ---------- tag reader rules ----------
+def test_only_standalone_tags_count():
+    from ml.ocr.read_tags import is_standalone_tag
+    assert is_standalone_tag("CB11") and is_standalone_tag("RCCB1") and is_standalone_tag("PS 22")
+    assert not is_standalone_tag("CB11-4/PS11-N")      # wire sleeve: mentions a tag, proves nothing
+    assert not is_standalone_tag("XG11-1/PS11-PE")
+    assert not is_standalone_tag("A9N2P16CIN")          # part number, not a tag
+    assert not is_standalone_tag("16A")
+
+
+def test_merge_keeps_one_reading_per_sticker_and_drops_cut_off_reads():
+    from ml.ocr.read_tags import merge_duplicates
+    obs = [{"tag": "DS21", "score": 0.70, "bbox": [3142, 1502, 3201, 1536]},
+           {"tag": "DS2", "score": 0.75, "bbox": [3145, 1502, 3200, 1532]},     # cut-off read of DS21
+           {"tag": "DS21", "score": 0.80, "bbox": [3279, 1002, 3347, 1031]},    # a second, real sticker
+           {"tag": "CB11", "score": 0.79, "bbox": [10, 10, 80, 40]},
+           {"tag": "CB11", "score": 0.60, "bbox": [12, 11, 79, 41]}]            # same sticker, other tile
+    tags = sorted(o["tag"] for o in merge_duplicates(obs))
+    assert tags == ["CB11", "DS21", "DS21"]
+
+
+def test_sideways_label_is_read_and_mapped_back(tmp_path):
+    pytest.importorskip("rapidocr_onnxruntime")
+    from ml.ocr.read_tags import read_tags
+    label = Image.new("RGB", (420, 140), "white")
+    ImageDraw.Draw(label).text((30, 20), "CB13", fill="black", font=ImageFont.load_default(size=90))
+    img = Image.new("RGB", (900, 900), (200, 200, 200))
+    img.paste(label.rotate(90, expand=True), (500, 200))          # printed sideways, like the breakers
+    p = tmp_path / "side.png"; img.save(p)
+    obs = read_tags(str(p), expected=["CB13", "CB14"])["observations"]
+    hits = [o for o in obs if o["text"] == "CB13"]
+    assert hits, obs
+    x1, y1, x2, y2 = hits[0]["bbox"]
+    assert 480 <= x1 and x2 <= 660 and 180 <= y1 and y2 <= 640   # inside where the label was pasted
+
+
+# ---------- ratings: reading and attaching to tags (positions modelled on a breaker rail) ----------
+def test_parse_rating():
+    from ml.ocr.ratings import parse_rating
+    assert parse_rating("16A") == "16 A" and parse_rating("6A") == "6 A"
+    assert parse_rating("16A 415V~") == "16 A"
+    assert parse_rating("20A PowerSupply") == "20 A" and parse_rating("40APower Supply") == "40 A"
+    assert parse_rating("80A RedundancyN") == "80 A"
+    assert parse_rating("24V=|40A") is None            # output spec, starts with a voltage
+    assert parse_rating("100-240V~12A-50/60HZ") is None
+    assert parse_rating("100A@40°C") is None            # busbar thermal rating
+    assert parse_rating("CB11") is None
+
+
+def test_cut_off_rating_dropped():
+    from ml.ocr.ratings import rating_observations
+    raw = [{"text": "16A", "score": 0.73, "bbox": [1416, 1236, 1449, 1309]},
+           {"text": "6A", "score": 0.58, "bbox": [1416, 1240, 1447, 1279]}]
+    assert [r["value"] for r in rating_observations(raw)] == ["16 A"]
+
+
+def test_each_breaker_gets_the_rating_below_it_not_the_one_above():
+    """Ratings sit below each sticker. CB14's nearest text is CB13's '16A' up-right; it must take its own '6A'."""
+    from ml.ocr.ratings import assign_ratings
+    tags = [{"tag": "CB13", "bbox": [1059, 1697, 1136, 1855]},
+            {"tag": "CB14", "bbox": [1060, 2094, 1129, 2239]}]
+    ratings = [{"value": "16 A", "raw": "16A", "score": .8, "bbox": [1423, 1877, 1467, 2049]},
+               {"value": "6 A", "raw": "6A", "score": .7, "bbox": [1426, 2385, 1461, 2438]},
+               {"value": "100 A", "raw": "100A", "score": .8, "bbox": [666, 1452, 699, 1580]}]   # left: ignored
+    got = assign_ratings(tags, ratings)
+    assert got["CB13"]["value"] == "16 A" and got["CB14"]["value"] == "6 A"
+
+
+def test_rating_directly_above_in_same_column_allowed():
+    from ml.ocr.ratings import assign_ratings
+    tags = [{"tag": "D13", "bbox": [2419, 1085, 2480, 1123]}]
+    ratings = [{"value": "80 A", "raw": "80A Redundancy", "score": .8, "bbox": [2381, 1059, 2486, 1078]}]
+    assert assign_ratings(tags, ratings)["D13"]["value"] == "80 A"
+
+
+def test_lcs_order_check():
+    from ml.ocr.check_photo import lcs
+    exp = ["CB11", "CB12", "CB13", "CB14", "CB15", "CB16"]
+    obs = ["CB11", "CB12", "CB14", "CB13", "CB15", "CB16"]
+    keep = lcs(exp, obs)
+    assert len(keep) == 5 and [t for t in obs if t not in keep] in (["CB13"], ["CB14"])
+    assert lcs(exp, exp) == exp
