@@ -214,3 +214,17 @@ def test_detections_to_contract(tmp_path):
     o = c["observations"][0]
     assert c["image_size"] == [400, 300] and o["source"] == "detector" and o["kind"] == "component"
     assert o["class_name"] == "mcb" and o["confidence"] == 0.77
+
+
+def test_public_only_build_without_labels(tmp_path):
+    """Training can start before the company photos are labelled."""
+    _public(tmp_path / "external", "breakers", "2-Pole-Circuit-Breaker")
+    (tmp_path / "map.yaml").write_text("breakers:\n  2 pole circuit breaker: mcb\n")
+    out = tmp_path / "pub"
+    r = subprocess.run([sys.executable, "-m", "ml.detection.build_dataset", "--public-dir", str(tmp_path / "external"),
+                        "--public-map", str(tmp_path / "map.yaml"), "--out", str(out)],
+                       cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr + r.stdout
+    info = json.loads((out / "dataset_info.json").read_text())
+    assert info["train"]["boxes_per_class"] == {"mcb": 1} and info["valid"]["images"] == 1
+    assert info["test_full"]["images"] == 0 and info["labels_sha256"] is None

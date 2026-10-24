@@ -5,7 +5,7 @@
 #   .\ml\detection\run.ps1 prelabel-all # step 1b: OWLv2 on all 5 photos -> Label Studio import file
 #   .\ml\detection\run.ps1 labelstudio  # step 2: start Label Studio (separate .venv-ls)
 #   .\ml\detection\run.ps1 dataset      # steps 3-4: convert labels + build dataset (needs ls_export.json + public data)
-#   .\ml\detection\run.ps1 train        # step 5: train the breaker detector on the GPU
+#   .\ml\detection\run.ps1 train        # step 5: train the breaker detector on the GPU (public data; can run while you label)
 #   .\ml\detection\run.ps1 dev          # step 6: both models on dev photos + scores (choose thresholds)
 #   .\ml\detection\run.ps1 test -Det 0.3 -Zs 0.15   # step 7: final test, once
 #
@@ -19,7 +19,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $Photos = "data/private/company-dataset"
-$Data = "data/private/rfdetr_dataset"
+$Data = "data/private/rfdetr_dataset"      # company test/dev answer key (+ public, unused here)
+$Public = "data/private/public_dataset"   # public training data only
 $Run = "runs/rfdetr-mcb-v1"
 $Weights = "$Run/checkpoint_best_total.pth"
 
@@ -63,8 +64,10 @@ switch ($Stage) {
         python -m ml.detection.build_dataset --labels data/private/labels/company_coco.json --photos $Photos --splits ml/detection/splits.yaml --public-map ml/detection/public_class_map.yaml --out $Data; Check "build_dataset"
     }
     "train" {
+        # Trains on PUBLIC data only, so it doesn't need the company labels: run it while you label.
         Use-Ml
-        python -m ml.detection.train_rfdetr --dataset $Data --out $Run; Check "training"
+        python -m ml.detection.build_dataset --public-map ml/detection/public_class_map.yaml --out $Public; Check "build public dataset"
+        python -m ml.detection.train_rfdetr --dataset $Public --out $Run; Check "training"
     }
     "dev" {
         Use-Ml

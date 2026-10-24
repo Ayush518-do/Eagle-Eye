@@ -7,6 +7,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 venv/
 .pytest_cache/
 .mypy_cache/
@@ -44,3 +45,6 @@ outputs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local Claude Code session files
+.claude/

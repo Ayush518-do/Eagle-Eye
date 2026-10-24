@@ -110,9 +110,10 @@ def add_public(writers: dict, public_dir: Path, class_map: dict, our_ids: dict, 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--labels", type=Path, required=True, help="company photo labels (COCO), the test answer key")
-    ap.add_argument("--photos", type=Path, required=True)
-    ap.add_argument("--splits", type=Path, required=True)
+    ap.add_argument("--labels", type=Path, help="company photo labels (COCO), the test answer key. "
+                    "Leave out to build only the public training data (train/valid), e.g. to train while labelling")
+    ap.add_argument("--photos", type=Path, default=Path("data/private/company-dataset"))
+    ap.add_argument("--splits", type=Path, default=Path("ml/detection/splits.yaml"))
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--public-dir", type=Path, default=Path("data/external"))
     ap.add_argument("--public-map", type=Path)
@@ -144,7 +145,7 @@ def main() -> None:
             "zero_shot_classes": [c["name"] for c in classes if not c.get("detector")],
             "photos": {}, "warnings": []}
 
-    labels = load_json(a.labels)
+    labels = load_json(a.labels) if a.labels else {"images": [], "annotations": []}
     for im in labels["images"]:
         split = where.get(Path(im["file_name"]).stem) or where.get(im["file_name"])
         if not split:
@@ -169,7 +170,7 @@ def main() -> None:
         info[s] = {"images": len(coco["images"]),
                    "boxes_per_class": dict(Counter(names[x["category_id"]] for x in coco["annotations"])),
                    "sources": dict(Counter(i["source"] for i in coco["images"]))}
-    info["labels_sha256"] = hashlib.sha256(a.labels.read_bytes()).hexdigest()
+    info["labels_sha256"] = hashlib.sha256(a.labels.read_bytes()).hexdigest() if a.labels else None
     save_json(info, a.out / "dataset_info.json")
     for s in report:
         print(f"{s:<9} {info[s]}")
