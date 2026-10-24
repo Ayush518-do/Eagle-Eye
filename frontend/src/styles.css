@@ -1,58 +1,61 @@
 /* ==========================================================================
-   Eagle Eye Industrial Quality Assurance Design System
-   Palette: Dark Navy (#0a1930), Off-White (#f6f7f9), Amber Accent (#f0a500)
-   4px border radius max, flat 1px borders, no glossy shadows or gradients.
+   Eagle Eye — Classy Enterprise Design System
+   Palette: Deep Blue (#004B8D), Soft Blue Bg (#F4F6F9), White Cards (#FFFFFF)
+   Amber accent kept for primary CTA. Flat chrome, generous whitespace, 10px radius.
+   Matches the company's UI Reference Prototype v2 shell.
    ========================================================================== */
 
 :root {
-  /* Core Industrial Palette */
-  --color-navy: #0a1930;
-  --color-navy-dark: #061122;
-  --color-navy-light: #162646;
-  --color-offwhite: #f6f7f9;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f0f3f6;
-  
-  /* Text */
-  --color-text-main: #0a1930;
-  --color-text-muted: #57606a;
-  --color-text-light: #f6f7f9;
-  
-  /* Borders */
-  --color-border: #d0d7de;
-  --color-border-subtle: #e1e4e8;
-  --color-border-focus: #0969da;
-  
-  /* Accent & Status Colors */
-  --color-accent: #f0a500; /* Industrial Amber */
-  --color-accent-bg: #fff8e6;
-  --color-accent-border: #e29b00;
-  
-  --color-status-approved: #1a7f37; /* Forest Green */
-  --color-status-approved-bg: #dafbe1;
-  --color-status-mismatch: #cf222e; /* Industrial Red */
-  --color-status-mismatch-bg: #ffebe9;
-  --color-status-review: #d97706; /* Amber */
-  --color-status-review-bg: #fef3c7;
-  --color-status-inconclusive: #57606a; /* Slate Grey */
-  --color-status-inconclusive-bg: #eaeef2;
+  /* Core Blue Enterprise Palette (from UI Reference Prototype v2) */
+  --color-navy: #004B8D;           /* primary brand */
+  --color-navy-dark: #003A6E;      /* hover/pressed */
+  --color-navy-light: #0066B3;     /* secondary / links */
+  --color-blue-50: #EAF2FA;
+  --color-blue-100: #D4E5F5;
+  --color-offwhite: #F4F6F9;       /* app background */
+  --color-surface: #FFFFFF;        /* cards */
+  --color-surface-subtle: #FAFBFC; /* table headers, chips */
 
-  /* Component Class Colors */
-  --color-class-breaker: #cf222e;
-  --color-class-powersupply: #1f5eff;
-  --color-class-iomodule: #1a7f37;
-  
+  /* Text */
+  --color-text-main: #1B2A3A;
+  --color-text-muted: #7A8796;
+  --color-text-light: #F4F6F9;
+
+  /* Borders */
+  --color-border: #DDE3EA;
+  --color-border-subtle: #EEF1F4;
+  --color-border-focus: #0066B3;
+
+  /* Accent & Status Colors */
+  --color-accent: #F5A623;          /* amber CTA */
+  --color-accent-bg: #FFF4E0;
+  --color-accent-border: #E29B00;
+
+  --color-status-approved: #1F7A4D;
+  --color-status-approved-bg: #E6F4EC;
+  --color-status-mismatch: #C62828;
+  --color-status-mismatch-bg: #FDECEC;
+  --color-status-review: #B26A00;
+  --color-status-review-bg: #FFF4E0;
+  --color-status-inconclusive: #6B7684;
+  --color-status-inconclusive-bg: #EEF0F3;
+
+  /* Component Class Colors (unchanged — these keep the box overlay legend) */
+  --color-class-breaker: #C62828;
+  --color-class-powersupply: #0066B3;
+  --color-class-iomodule: #1F7A4D;
+
   /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
-  
+
   /* Radii & Chrome */
-  --radius-xs: 2px;
-  --radius-sm: 4px; /* Maximum allowed radius for industrial chrome */
-  
-  /* Elevation: Flat crisp 1px borders with minimal industrial shadow */
-  --shadow-flat: 0 1px 2px rgba(10, 25, 48, 0.05);
-  --shadow-modal: 0 4px 16px rgba(10, 25, 48, 0.2);
+  --radius-xs: 4px;
+  --radius-sm: 10px;                /* classy enterprise cards use 10 */
+
+  /* Elevation: soft shadow instead of hard border */
+  --shadow-flat: 0 1px 3px rgba(16, 40, 70, 0.08), 0 4px 14px rgba(16, 40, 70, 0.06);
+  --shadow-modal: 0 10px 40px rgba(10, 40, 80, 0.15);
 }
 
 /* Base Reset & Typography */

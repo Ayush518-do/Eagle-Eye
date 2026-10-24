@@ -148,6 +148,13 @@ class Finding(BaseModel):
     # When a per-image alignment is set and the item's layout places it on that drawing page,
     # the ghost overlay provides the projected box in photo pixels. Only set for `missing` findings.
     expected_bbox: Optional[BBox] = None
+    # Evidence-weighted confidence for this finding, in [0, 1]. Derived from OCR text confidence,
+    # detector confidence, number of agreeing sources and number of distinct images that support it.
+    # Not a hard threshold: for a `verified` finding it indicates how sure we are; for a `missing`
+    # finding it indicates how sure we are that the component is really absent (vs just unseen).
+    evidence_score: Optional[float] = Field(default=None, ge=0, le=1)
+    # Short list of source labels contributing to the score, e.g. ["ocr", "detector"].
+    sources: list[str] = []
 
 
 class GhostBox(BaseModel):

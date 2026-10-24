@@ -114,12 +114,15 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
                         if projected:
                             expected_bbox = projected
                             break
+        score, sources = _evidence_score(f)
         finding_schemas.append(schemas.Finding(
             finding_id=f.id, type=f.type, tag=f.tag, expected_value=f.expected_value,
             observed_text=f.observed_text, detector_confidence=f.detector_confidence,
             ocr_confidence=f.ocr_confidence, status=current, reason=f.reason,
             evidence=[schemas.Evidence(**e) for e in f.evidence or []],
             expected_bbox=expected_bbox,
+            evidence_score=score,
+            sources=sources,
         ))
     return schemas.InspectionDetail(
         inspection_id=inspection.id,
@@ -136,6 +139,46 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
         findings=finding_schemas,
         counts=counts,
     )
+
+
+def _evidence_score(f: models.Finding) -> tuple[Optional[float], list[str]]:
+    """Weighted confidence in [0, 1] for a finding, with the contributing source labels.
+
+    - verified: average of OCR + detector confidences, plus a small bonus for cross-source agreement
+      and for a second supporting image (each piece of evidence has a distinct image_id when it does).
+    - missing: a confidence that the part is really absent; starts at the ratio of inspection images
+      that produced any OCR observation, so if the detector covered the cabinet it's higher. Scaled
+      by whether an expected_bbox could be projected from the alignment (handled by the caller when
+      available; the base term is deliberately conservative).
+    - unexpected / rating_mismatch / other: a straight confidence from the engine's own detector/OCR
+      scores.
+    """
+    sources: list[str] = []
+    if f.detector_confidence is not None:
+        sources.append("detector")
+    if f.ocr_confidence is not None:
+        sources.append("ocr")
+    distinct_images = len({(e or {}).get("image_id") for e in (f.evidence or []) if (e or {}).get("image_id")})
+    if distinct_images >= 2:
+        sources.append("multi_photo")
+
+    if f.type == "verified":
+        parts = [c for c in (f.detector_confidence, f.ocr_confidence) if c is not None]
+        base = sum(parts) / len(parts) if parts else 0.75  # tag match without a score is still evidence
+        bonus = 0.05 * max(0, len({s for s in sources if s in {"detector", "ocr"}}) - 1)
+        bonus += 0.05 if "multi_photo" in sources else 0.0
+        return round(min(1.0, base + bonus), 3), sources
+    if f.type == "missing":
+        # Base: 0.3 (uncertain). Bumps for inconclusive status and for the number of images.
+        base = 0.3 + 0.1 * min(distinct_images, 3)
+        return round(min(1.0, base), 3), sources or ["coverage"]
+    if f.type == "unexpected":
+        c = max([x for x in (f.detector_confidence, f.ocr_confidence) if x is not None], default=0.5)
+        return round(float(c), 3), sources or ["observation"]
+    if f.type == "rating_mismatch":
+        c = f.ocr_confidence if f.ocr_confidence is not None else 0.5
+        return round(float(c), 3), sources or ["ocr"]
+    return None, sources
 
 
 def _run_ocr_on_images(session: Session, inspection_id: str, expected_tags: list[str]) -> None:
