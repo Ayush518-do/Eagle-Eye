@@ -1,55 +1,83 @@
 # Hand-over contracts
 
-These formats let the four parts work in parallel. Change them only with agreement from both sides,
-and bump `contract_version` when you do.
+These are the agreed data formats between the parts of Eagle Eye. Each team codes against this file,
+not against another team's code, which is what lets everyone work at the same time.
 
-`contract_version: 0.1`
+`contract_version: 0.2`
 
-Coordinates are always pixels in the **original uploaded image**, as `[x_min, y_min, x_max, y_max]`,
-origin at the top-left. Confidences are numbers from 0 to 1, or `null` when the step gives none.
+Change this file only with agreement from both sides of a hand-over, and bump the version when you do.
+**0.2 adds:** arrangement (group + position) and `component_type` on expected items; finding types
+`order_changed` and `type_mismatch`; evidence sources and score on findings; the arrangement summary;
+the analytics response.
+
+**Rules for every format:**
+
+- Coordinates are pixels in the **original uploaded photo**, `[x_min, y_min, x_max, y_max]`, with the
+  origin at the top-left.
+- Confidences are numbers from 0 to 1, or `null` when a step gives none.
+- New fields are optional unless marked *required*, so older data still loads.
 
 ---
 
-## A. Drawing → backend (Part 2 produces, Part 3 consumes)
+## A. Drawing → backend: expected items
 
-The drawing parser turns the drawing PDF into a list of **expected items**: what should be in the cabinet.
+Produced by the drawing parser (ML) or typed in by hand in the parts editor (frontend).
 
 ```json
 {
-  "contract_version": "0.1",
+  "contract_version": "0.2",
   "drawing_file_sha256": "…",
   "parser_version": "drawing-parser 0.1.0",
   "items": [
     {
-      "tag": "CB11",
-      "part_number": "…",
-      "description": "Miniature circuit breaker",
+      "tag": "CB13",
+      "component_type": "mcb",
+      "part_number": "A9N2P16CIN",
+      "description": "Miniature circuit breaker 2P",
       "quantity": 1,
-      "rating": { "value": "10 A", "source": "schematic", "page": 5, "needs_review": false },
-      "source_page": 3
+      "rating": { "value": "16 A", "source": "schematic", "page": 9, "needs_review": false },
+      "arrangement": { "group": "left_breaker_rail", "position": 3, "direction": "top_to_bottom" },
+      "source_page": 5
     },
     {
       "tag": "PS11",
-      "part_number": "…",
-      "description": "Power supply",
+      "component_type": "power_supply",
+      "description": "Power supply 24 V DC",
       "quantity": 1,
-      "rating": { "value": null, "source": "schematic", "page": 4, "needs_review": true },
-      "source_page": 3
+      "rating": { "value": null, "source": "schematic", "page": 10, "needs_review": true },
+      "arrangement": { "group": "power_row_lower", "position": 1, "direction": "left_to_right" },
+      "source_page": 5
     }
   ]
 }
 ```
 
-- `needs_review: true` means the parser could not read the value reliably. Never guess a value.
-- `tag` is the label printed on the cabinet part (for example `CB11`). It is the main matching key.
+| Field | Meaning |
+|---|---|
+| `tag` *(required)* | The label printed on the part, e.g. `CB13`. The main matching key |
+| `component_type` | One of `mcb`, `isolator`, `power_supply`, `redundancy_module`, `io_module`, `controller`, `terminal_block`, `other`. Used for the type check |
+| `rating.needs_review` | `true` = the value couldn't be read reliably. Never guess a value |
+| `arrangement.group` | Name of a row or rail of parts that sit in a line, e.g. `left_breaker_rail` |
+| `arrangement.position` | 1 = first in that group, counted in `direction` |
+| `arrangement.direction` | `top_to_bottom` or `left_to_right` |
 
-## B. Photo → backend (Parts 1 and 2 produce, Part 3 consumes)
+`component_type` from the tag prefix, when the drawing doesn't say otherwise:
 
-Every model output on a photo is an **observation**. Detector boxes and OCR text readings use the same shape.
+| Prefix | Type |
+|---|---|
+| `CB` | `mcb` |
+| `DS` | `isolator` (DS1–DS3) or `mcb` (DS11–DS22): check the drawing |
+| `PS` | `power_supply` |
+| `D` + digits | `redundancy_module` |
+| `X…` | `terminal_block` |
+
+## B. Photo → backend: observations
+
+Everything a model (or a person) sees in a photo is an **observation**.
 
 ```json
 {
-  "contract_version": "0.1",
+  "contract_version": "0.2",
   "image_id": "IMG-001",
   "image_sha256": "…",
   "image_size": [4096, 3072],
@@ -62,8 +90,9 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
       "bbox": [1200, 830, 1290, 1105],
       "confidence": 0.81,
       "text": null,
+      "raw_text": null,
       "text_confidence": null,
-      "model": { "name": "d-fine-s", "version": "baseline-coco", "weights_sha256": "…" }
+      "model": { "name": "rf-detr-small", "version": "eagle-v1", "weights_sha256": "…" }
     },
     {
       "observation_id": "OBS-002",
@@ -81,33 +110,38 @@ Every model output on a photo is an **observation**. Detector boxes and OCR text
 }
 ```
 
-- `source` is one of `detector`, `ocr`, `manual` (drawn by a person) or `synthetic` (test data only).
-- `raw_text` is exactly what OCR read; `text` is the tag it was matched to. Keep both so corrections are visible.
-- `confidence` is how sure the step is that something is there; `text_confidence` is how sure the
-  reader is of the characters. Keep them separate.
-- An empty `observations` list is a valid answer. It means "nothing found", not "missing".
+- `source`: `detector` (trained), `zero_shot` (pretrained, from a text prompt), `ocr`, `manual`
+  (drawn by a person), or `synthetic` (tests only, never in a real result).
+- `kind`: `component` (a box around a part), `tag_label` (a box around a printed tag), or
+  `rating_text` (a box around rating text such as "16A").
+- `raw_text` is exactly what was read. `text` is the tag it was matched to. Keep both.
+- `confidence` = how sure that something is there. `text_confidence` = how sure of the characters.
+- An empty list is valid. It means "nothing found", **not** "missing".
 
-Both A and B are produced through a Python function so the backend does not depend on how the model works:
+Python entry points (ML implements, backend calls):
 
 ```python
-# ml/interfaces.py (Part 1 and Part 2 implement; Part 3 calls)
-def parse_drawing(pdf_path: str) -> dict: ...          # returns contract A
-def detect_components(image_path: str) -> dict: ...    # returns contract B, kind="component"
-def read_tags(image_path: str) -> dict: ...            # returns contract B, kind="tag_label"
+# ml/interfaces.py
+def parse_drawing(pdf_path: str) -> dict: ...          # contract A
+def detect_components(image_path: str) -> dict: ...    # contract B, kind="component"
+def read_tags(image_path: str) -> dict: ...            # contract B, kind="tag_label" / "rating_text"
 ```
 
-If a model is not available the function raises `ModelUnavailableError` with a plain message. It never
-returns made-up observations.
+A model that isn't available raises `ModelUnavailableError` with a plain message. It never returns
+made-up observations.
 
-## C. Backend → frontend (Part 3 produces, Part 4 consumes)
+## C. Backend → frontend: inspection result
 
-Builds on [`api-contract.md`](api-contract.md). The inspection response:
+`GET /api/inspections/{id}`
 
 ```json
 {
   "inspection_id": "INS-001",
   "cabinet_id": "CAB-001",
   "design_revision_id": "REV-A",
+  "previous_inspection_id": null,
+  "state": "done",
+  "error": null,
   "created_at": "2026-10-24T10:00:00Z",
   "overall_status": "review_required",
   "images": [
@@ -119,29 +153,76 @@ Builds on [`api-contract.md`](api-contract.md). The inspection response:
       "finding_id": "F-001",
       "type": "rating_mismatch",
       "tag": "CB11",
+      "component_type": "mcb",
       "expected_value": "10 A",
       "observed_text": "16 A",
       "detector_confidence": 0.81,
       "ocr_confidence": 0.97,
-      "status": "needs_review",
-      "evidence": [ { "image_id": "IMG-001", "bbox": [1200, 830, 1290, 1105] } ]
+      "sources": ["ocr", "detector"],
+      "evidence_score": 0.88,
+      "status": "potential_mismatch",
+      "reason": "Rating on the breaker differs from the drawing.",
+      "evidence": [ { "image_id": "IMG-001", "bbox": [1200, 830, 1290, 1105] } ],
+      "reviews": []
+    }
+  ],
+  "arrangement": [
+    {
+      "group": "left_breaker_rail",
+      "direction": "top_to_bottom",
+      "expected_order": ["CB11", "CB12", "CB13", "CB14", "CB15", "CB16"],
+      "observed_order": ["CB11", "CB12", "CB14", "CB13", "CB15", "CB16"],
+      "out_of_order": ["CB13"],
+      "status": "order_changed"
     }
   ],
   "counts": { "verified": 10, "potential_mismatch": 1, "needs_review": 3, "inconclusive": 2 }
 }
 ```
 
-- `type`: `missing`, `unexpected`, `rating_mismatch`, `misplaced`, `verified`.
-- `status`: `verified`, `potential_mismatch`, `needs_review`, `inconclusive`, `confirmed_by_reviewer`,
-  `rejected_by_reviewer`, `resolved_after_reinspection`.
-- `overall_status`: `pass` (all verified), `mismatch_detected` (any potential mismatch),
-  otherwise `review_required`.
-- The frontend draws `evidence[].bbox` on the image scaled from the original `width`/`height`.
+**Finding `type`:**
 
-Reviewer decision (frontend → backend): `POST /api/findings/{finding_id}/review`
+| Type | Meaning |
+|---|---|
+| `verified` | Expected part found and matches |
+| `missing` | Expected part not found. Status is `inconclusive` unless its area is clearly visible |
+| `unexpected` | Found but not in the drawing |
+| `rating_mismatch` | Rating read differs from the drawing |
+| `type_mismatch` | The tag says one kind of part (e.g. PS11 = power supply) but a different kind is under it |
+| `order_changed` | Part is in a different position in its group than the drawing says |
+| `misplaced` | Part is in a different group or area (later) |
+
+**Finding `status`:** `verified`, `potential_mismatch`, `needs_review`, `inconclusive`,
+`confirmed_by_reviewer`, `rejected_by_reviewer`, `resolved_after_reinspection`.
+
+**Arrangement `status`:** `matches`, `order_changed` (review required, **not** a defect by itself),
+`not_enough_evidence` (fewer than 2 tags of the group were read).
+
+**`overall_status`:** `pass` (every finding verified or confirmed fine), `mismatch_detected` (any
+`potential_mismatch`), otherwise `review_required`. An order change alone gives `review_required`.
+
+**`sources` / `evidence_score`:** which kinds of evidence agree on this finding, and a 0–1 summary.
+For example, OCR + trained detector + zero-shot detector all agreeing gives a high score; OCR alone gives a lower one.
+
+Reviewer decision: `POST /api/findings/{finding_id}/review`
 
 ```json
 { "decision": "confirmed_by_reviewer", "reviewer": "Archita", "note": "Label clearly shows 16 A" }
 ```
 
-Review decisions are added as new events; the original finding is never overwritten.
+Reviews are added as new events. The original finding is never overwritten. `reviews[]` lists them, oldest first.
+
+## D. Backend → frontend: analytics
+
+`GET /api/analytics?from=2026-10-01&to=2026-10-31`
+
+```json
+{
+  "inspections": 12,
+  "overall": { "pass": 5, "review_required": 6, "mismatch_detected": 1 },
+  "findings_by_type": { "missing": 4, "unexpected": 1, "rating_mismatch": 2, "order_changed": 3, "type_mismatch": 0 },
+  "top_flagged_tags": [ { "tag": "CB14", "count": 3 }, { "tag": "PS11", "count": 2 } ],
+  "review_outcomes": { "confirmed_by_reviewer": 4, "rejected_by_reviewer": 2, "pending": 5 },
+  "per_day": [ { "date": "2026-10-24", "inspections": 3, "mismatch_detected": 1 } ]
+}
+```

@@ -76,6 +76,8 @@ git push origin feature/<your-part>
 - `develop` contains tested starters for every task: backend API basics (13 tests), frontend screens
   (builds), comparison starter, and ML tools (14 tests). Details are in each task file.
 - There's no database and no inspection endpoints yet; Task 1 starts there.
+- Task files are complete to the end of the project, in milestones M1–M5. Contracts are at version 0.2,
+  which adds arrangement (order) checks, type checks, evidence sources and analytics.
 - Known results from that prototype, for reference only (one reviewer, development photos, not an
   independent test): RapidOCR read 12/12 hand-marked tags exactly, Tesseract 5/12; the drawing parser
   read all 70 BOM lines; power-supply ratings PS11–PS23 could not be read reliably.

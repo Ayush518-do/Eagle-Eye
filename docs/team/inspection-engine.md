@@ -1,155 +1,301 @@
-# Task 3: Inspection engine (rules, photo quality, reports)
+# Task 3: Inspection engine (rules, photo quality, reports): complete guide
 
-**Branch:** `feature/inspection-engine` · **You own:** `backend/app/pipeline/`,
-`backend/app/reports/`, `backend/tests/test_engine_*.py`, `config/thresholds.yaml`.
-**Do not edit:** API routes or database code (Task 1), `frontend/` (Task 2), `ml/`.
+**Branch:** `feature/inspection-engine`
+**You own:** `backend/app/pipeline/`, `backend/app/reports/`, `backend/tests/test_engine_*.py`,
+`backend/tests/test_compare.py`, `config/thresholds.yaml`.
+**Don't edit:** API routes or database code (Task 1), `frontend/` (Task 2), `ml/`.
+You may add packages to `backend/requirements.txt`; tell Task 1, who shares that file.
 
-## What you are building
+This file covers your work **until the project is finished**. Work through the milestones in order.
+If something is unclear or blocked, tell the team lead; don't guess.
 
-The "brain" that turns *what the drawing expects* plus *what was seen in the photos* into findings.
-It is plain Python with no database and no web code, which makes it easy to test with small examples.
+---
+
+## 0. What you're building
+
+The engine is the "brain". It takes *what the drawing expects* and *what was seen in the photos*, and
+produces findings. It's **plain Python**: no web code, no database. That makes every rule easy to test
+with small hand-written examples.
 
 ```text
 expected items (contract A) ─┐
-observations   (contract B) ─┼─► run_inspection() ─► findings (contract C) + photo flags
+observations   (contract B) ─┼─► run_inspection() ─► findings + arrangement + photo flags + overall status
 photo files                 ─┘
 ```
 
-Until the ML parts are ready, observations come from boxes people draw by hand (`source: "manual"`),
-so everything here can be built and tested now.
+Observations come from several **sources**: `manual` boxes now, then `ocr`, `detector` and `zero_shot`
+when ML is ready. The engine treats them all the same way, so **nothing changes when ML arrives**.
 
-## What already works
+All data shapes are in **`docs/contracts.md` (version 0.2)**. `backend/app/schemas.py` (Task 1) holds the
+Python versions; import from there.
 
-`backend/app/pipeline/compare.py` matches expected tags to read tags:
+## 1. What already exists
 
-- tag read with high confidence → `verified`
-- read with low confidence → `needs_review`
-- not read anywhere → `inconclusive` (**never** "missing" from one photo)
+`backend/app/pipeline/compare.py` (tests in `backend/tests/test_compare.py`):
+
+- tag read with high confidence → `verified`; low confidence → `needs_review`
+- not read anywhere → `missing` with status `inconclusive`
 - read but not in the drawing → `unexpected`, `needs_review`
-- refuses `source: "synthetic"` data
+- refuses `source: "synthetic"` data in a real run
 
-Tests: `backend/tests/test_compare.py`.
+Keep these tests passing throughout.
 
-## Step 1: The single entry point
+## 2. Rules that never change
 
-Create `backend/app/pipeline/engine.py`:
+1. **The engine only ever lowers certainty** (e.g. `verified` → `needs_review`), never raises it.
+2. **Not seen ≠ missing.** "Missing" needs clear evidence (rule in M2.3); otherwise `inconclusive`.
+3. **Never guess** a rating, tag or order you can't read. Leave it out and say why in `reason`.
+4. **Every number** (threshold, distance) lives in `config/thresholds.yaml`, never in the code.
+5. **Every rule has a test**, with the input and expected output written out in the test.
+
+---
+
+## Milestone 1: Core engine (must have, do first)
+
+### 1.1 The single entry point
+`backend/app/pipeline/engine.py`. Task 1 calls **only this**, so keep its name and arguments stable:
 
 ```python
-def run_inspection(expected_items, observations_by_image, image_paths, thresholds=None):
-    """Returns (findings, image_flags). image_flags = {"IMG-001": ["low_sharpness"], ...}"""
-    image_flags = {img: check_photo(path, thresholds) for img, path in image_paths.items()}
-    findings = compare(expected_items, observations_by_image, thresholds)
-    findings = apply_confidence_gate(findings, image_flags, thresholds)
-    return findings, image_flags
+@dataclass
+class EngineResult:
+    findings: list[Finding]
+    arrangement: list[ArrangementResult]
+    image_flags: dict[str, list[str]]     # {"IMG-001": ["low_sharpness"]}
+    overall_status: str                   # pass | review_required | mismatch_detected
+    counts: dict[str, int]
+
+def run_inspection(expected_items, observations_by_image, image_paths, thresholds=None) -> EngineResult:
+    t = thresholds or load_thresholds()
+    image_flags = {img: check_photo(path, t) for img, path in image_paths.items()}
+    merged = fuse_observations(observations_by_image, t)          # M3.1; returns input unchanged at first
+    findings = compare(expected_items, merged, t)                  # presence + unexpected
+    findings += check_ratings(expected_items, merged, t)           # M1.4
+    findings += check_types(expected_items, merged, t)             # M3.2
+    arrangement = check_arrangement(expected_items, merged, t)     # M2.1
+    findings = apply_confidence_gate(findings, image_flags, t)     # M1.3
+    return EngineResult(findings, arrangement, image_flags,
+                        overall_status(findings), count_by_status(findings))
 ```
 
-Task 1 calls only this function. Keep the name and arguments stable, and tell Task 1 before you
-change them.
+Build it with simple versions first (functions that return empty lists), so Task 1 can call it on day 1.
 
-## Step 2: Thresholds in one file
-
-Put every number in `config/thresholds.yaml`, never scattered through the code:
+### 1.2 Thresholds file
+`config/thresholds.yaml` and a `load_thresholds()` loader:
 
 ```yaml
-min_text_confidence: 0.80        # below this, an OCR reading needs review
+min_text_confidence: 0.80        # below this an OCR reading needs review
 min_detector_confidence: 0.50
 min_photo_width: 1600            # pixels
-min_sharpness: 100.0             # see Step 3
-max_overexposed_fraction: 0.15   # share of nearly-white pixels
+min_sharpness: 100.0             # variance of the Laplacian, see 1.3
+max_overexposed_fraction: 0.15
+label_to_component_max_gap: 0.6  # in label heights, for M3.1
+iou_agree: 0.5                   # box overlap needed for two detectors to "agree"
+rating_search_margin: 0.2        # widen a component box by 20 % when looking for its rating text
 ```
 
-These are starting guesses. Write down which ones were tuned, and on what photos.
+These are starting guesses. Write down which ones you tuned, and on what photos.
 
-## Step 3: Photo-quality checks
-
-`backend/app/pipeline/image_quality.py` (use OpenCV: `pip install opencv-python-headless`):
+### 1.3 Photo-quality checks + confidence gate
+`backend/app/pipeline/image_quality.py` (`pip install opencv-python-headless`):
 
 | Flag | How to measure | Meaning |
 |---|---|---|
 | `low_resolution` | width < `min_photo_width` | labels may be too small to read |
-| `low_sharpness` | variance of the Laplacian < `min_sharpness` | the photo is probably blurry |
-| `overexposed` | share of pixels with brightness > 250 > limit | glare may hide labels |
+| `low_sharpness` | variance of the Laplacian < `min_sharpness` | probably blurry |
+| `overexposed` | share of pixels with brightness > 250 is above the limit | glare may hide labels |
 
-*Variance of the Laplacian* in plain words: the Laplacian highlights edges, so a sharp photo has
-strong edges and a high variance, while a blurry one has a low variance.
+*Variance of the Laplacian* in plain words: the Laplacian highlights edges. A sharp photo has strong
+edges, so the variance is high; a blurry photo has weak edges, so it's low.
 
 ```python
-import cv2
 gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
 ```
 
-These are hints, not verdicts. Test with one sharp generated image and a blurred copy of it
-(`cv2.GaussianBlur`); the blurred one must get the flag.
-
-## Step 4: Confidence gate
-
-`apply_confidence_gate()` lowers certainty, never raises it:
+`apply_confidence_gate()`:
 
 | Situation | Result |
 |---|---|
-| `verified`, but every photo showing it has `low_sharpness` | → `needs_review`, reason "photo may be blurry" |
-| `potential_mismatch` read with confidence below threshold | → `needs_review` |
-| Expected item has `rating.needs_review: true` | rating check skipped, reason says so |
-| Two photos read different text for the same tag area | → `needs_review`, both readings in the reason |
+| `verified`, but every photo showing it is `low_sharpness` | → `needs_review`, reason "photo may be blurry" |
+| `potential_mismatch` read below `min_text_confidence` | → `needs_review` |
+| expected item has `rating.needs_review: true` | rating check skipped, reason says so |
+| two photos read different text in the same tag area | → `needs_review`, both readings in `reason` |
 
-Each rule gets its own test, with the input and expected output written out in the test.
+**Test:** a sharp generated image, and a blurred copy (`cv2.GaussianBlur`) that must get `low_sharpness`.
 
-## Step 5: Rating check
-
-When a reading near a tag contains a rating, compare it with the drawing.
+### 1.4 Rating check
 `backend/app/pipeline/ratings.py`:
 
 ```python
 normalise_rating("10 A")  -> ("A", 10.0)
 normalise_rating("10A")   -> ("A", 10.0)
-normalise_rating("C10")   -> ("A", 10.0)   # breaker label: curve C, 10 amps
+normalise_rating("C10")   -> ("A", 10.0)    # breaker marking: curve C, 10 amps
+normalise_rating("16A")   -> ("A", 16.0)
+normalise_rating("40A Power Supply") -> ("A", 40.0)
 normalise_rating("24VDC") -> ("V", 24.0)
-normalise_rating("CB11")  -> None          # a tag, not a rating
+normalise_rating("CB11")  -> None           # a tag, not a rating
 ```
 
-- Same unit and value → no extra finding.
-- Different value → `rating_mismatch`, `potential_mismatch`, with expected and observed both shown.
-- Can't parse → leave it alone. Never guess.
+- Find rating text **inside or next to** the part's box: the component box widened by `rating_search_margin`.
+- Same unit and value: nothing extra. Different value: `rating_mismatch` / `potential_mismatch`, with
+  `expected_value` and `observed_text`. Can't parse: leave it alone, never guess.
 
-Which reading belongs to which tag: use the reading closest to the tag's box, within a limit set
-in `thresholds.yaml`. Write tests with made-up coordinates.
+**Check:** `pytest backend/tests -q` passes. Task 1 can call `run_inspection()` and gets real findings
+from manual boxes.
 
-## Step 6: Reinspection comparison
+---
 
-`compare_with_previous(old_findings, new_findings)`: a finding from the earlier inspection becomes
-`resolved_after_reinspection` **only** if the new inspection has it `verified`. Anything else stays
-open, and an old finding is never deleted.
+## Milestone 2: Selected features (high priority)
 
-## Step 7: Inspection report
+### 2.1 Arrangement / order check (new feature)
+`backend/app/pipeline/arrangement.py`. For each `arrangement.group` in the expected items:
 
-`backend/app/reports/html_report.py` using Jinja2 (`pip install jinja2`) creates one HTML file per
-inspection:
+1. **Expected order:** the group's tags sorted by `position`.
+2. **Observed order:** the tags read in the photo, sorted by box centre: `y` for `top_to_bottom`, `x` for
+   `left_to_right`. Use one photo per group (the one with the most tags read in that group).
+3. **Compare with the longest common subsequence (LCS).** An LCS is the longest list of tags that
+   appear in the same order in both lists, though not necessarily side by side. Tags outside it are out
+   of order.
 
-- cabinet, design revision, date, overall status
-- findings table (same columns as the frontend)
-- a small cropped image of each finding's evidence box (Pillow `Image.crop`)
+```text
+expected: CB11 CB12 CB13 CB14 CB15 CB16
+observed: CB11 CB12 CB14 CB13 CB15 CB16
+LCS:      CB11 CB12 CB14      CB15 CB16   (CB11 CB12 CB13 CB15 CB16 is equally long)
+out_of_order: ["CB13"]  → status "order_changed", one finding type "order_changed", status needs_review
+
+For a swap, either tag can be the one left out; the code below picks CB13. Both are correct.
+The frontend highlights both swapped tags, so it doesn't matter for the user.
+```
+
+```python
+def lcs(a, b):
+    dp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+    for i in range(len(a) - 1, -1, -1):
+        for j in range(len(b) - 1, -1, -1):
+            dp[i][j] = dp[i+1][j+1] + 1 if a[i] == b[j] else max(dp[i+1][j], dp[i][j+1])
+    out, i, j = [], 0, 0
+    while i < len(a) and j < len(b):
+        if a[i] == b[j]: out.append(a[i]); i += 1; j += 1
+        elif dp[i+1][j] >= dp[i][j+1]: i += 1
+        else: j += 1
+    return out
+```
+
+Rules:
+- Compare only tags that were **both expected and read** in that group. Missing tags are reported by
+  the presence check, not here.
+- Fewer than 2 such tags → `not_enough_evidence`.
+- Order change → status `needs_review`, **never** `potential_mismatch`. An order change is not a defect by itself; the reviewer decides.
+- Ties (two tags with nearly the same centre, within half a label height) → `not_enough_evidence`, with reason.
+
+Tests: matching order; one swap; a tag moved to the end; 1 tag read; ties; a horizontal group.
+
+### 2.2 Multiple photos
+Combine evidence across photos **by tag**:
+
+- **Present** if any clear photo reads it.
+- **Different readings** in different photos → `needs_review`, both listed.
+- `evidence[]` lists every photo where it was seen.
+
+### 2.3 "Missing" needs clear evidence
+An expected tag that wasn't read is `missing` + `inconclusive` **unless** all of these hold:
+
+- the photo covering its group has no quality flags,
+- at least 2 other tags of the same group were read (so the group is clearly in view),
+- its expected position falls between them and nothing was read there.
+
+Only then does it become `missing` + `potential_mismatch`, with reason "group visible, CB14 not found
+between CB13 and CB15".
+
+### 2.4 Reinspection comparison
+`compare_with_previous(old_findings, new_findings)`: an old finding becomes
+`resolved_after_reinspection` **only** if the new inspection has that tag `verified`. Everything else
+stays open. Old findings are never deleted.
+
+### 2.5 Report and CSV
+`backend/app/reports/html_report.py` with Jinja2 (`pip install jinja2`):
+`render_report(inspection: InspectionResult, image_paths) -> str` (HTML). Include:
+
+- cabinet, revision, date, overall status, counts
+- findings table (same columns as the frontend), arrangement cards
+- a small cropped picture of each finding's evidence box (Pillow `Image.crop`, embedded as base64)
 - photo-quality flags in plain words
+- review decisions so far
 - footer: "Inspection assistance only. Uncertain findings require qualified human review."
 
-Optional: a QR code (`pip install qrcode`) linking to the cabinet's history page.
+`backend/app/reports/export.py`: `findings_to_csv(inspection) -> str` with columns
+`finding_id,tag,type,status,expected,observed,ocr_confidence,sources,reason,last_review`.
 
-Task 1 will expose it as `GET /api/inspections/{id}/report`.
+---
 
-## Tests
+## Milestone 3: Fusion and extras
 
-Name files `backend/tests/test_engine_*.py`. Only generated images and hand-written data, no
-company photos. Cover every rule in Steps 3–6, including the "never call it missing" rule.
+### 3.1 Evidence fusion (prepares for ML; build now with manual boxes)
+`backend/app/pipeline/fusion.py`, `fuse_observations(...)`:
+
+1. **Detectors agree:** a `detector` box and a `zero_shot` box with the same class and IoU ≥ `iou_agree`
+   become one component with both sources. *IoU* (intersection over union) = overlap area ÷ combined
+   area: 1 is identical, 0 is no overlap.
+2. **Attach tags to components:** a `tag_label` belongs to the component box it sits inside, or directly
+   above or below, within `label_to_component_max_gap` label heights. That gives the component its tag.
+3. **Evidence score per finding:**
+   ```text
+   ocr tag read                       +0.5 × text_confidence
+   trained detector box agrees        +0.3 × confidence
+   zero-shot box agrees               +0.2 × confidence
+   manual box                         = 1.0 (a person drew it)
+   ```
+   Store `sources` (e.g. `["ocr","detector"]`) and `evidence_score` on each finding.
+
+Tests with hand-made boxes: two overlapping boxes merge; far-apart boxes don't; a label above a box
+attaches; a label far away doesn't.
+
+### 3.2 Type check
+`check_types(...)`: if the expected `component_type` of a tag (e.g. PS11 → `power_supply`) differs from
+the class of the component box it's attached to (e.g. `mcb`), give a `type_mismatch` with status
+`needs_review`. This only runs when a component box exists; otherwise skip it.
+
+### 3.3 Analytics summary
+`backend/app/pipeline/analytics.py`: `summarise(inspections) -> dict` in the shape of contract D.
+Task 1 calls it with stored inspections.
+
+### 3.4 QR on the report
+Add the cabinet's QR code (`pip install qrcode[pil]`) to the report header, linking to
+`{FRONTEND_URL}/cabinets/{id}`.
+
+---
+
+## Milestone 4: ML integration (when models are connected)
+
+- Real `ocr`, `detector` and `zero_shot` observations flow through the same functions. Re-run every
+  test, plus one end-to-end test on the demo cabinet.
+- Tune `config/thresholds.yaml` on the company close-up photos. Record the before/after values and
+  the photos used in `config/THRESHOLDS_NOTES.md`.
+- Measure each source **alone** and **merged**, on the same hand-made answer key (a list of the correct
+  tags per photo), so "merging helps" is a measured claim, not an assumption.
+
+## Milestone 5: Demo hardening
+
+- Run the engine on all company photos; no crash on any of them.
+- Perturbation tests (clearly labelled `synthetic`): swap two tags (expect `order_changed`); remove one
+  tag (expect `missing`); change a rating text (expect `rating_mismatch`).
+- Time `run_inspection` on a 4096×3072 photo; keep it under a few seconds without ML.
+
+---
 
 ## Done when
 
-- [ ] `run_inspection()` exists and Task 1 calls it.
+- [ ] `run_inspection()` returns `EngineResult` and Task 1 uses it.
+- [ ] Photo checks, gate, ratings, arrangement, multi-photo, missing rule, reinspection, fusion, type check,
+      analytics, report and CSV all exist with passing tests.
 - [ ] Every threshold is in `config/thresholds.yaml`.
-- [ ] Blur, rating, gate and reinspection rules each have passing tests.
-- [ ] An HTML report can be generated for a test inspection and opens in a browser.
-- [ ] Add new packages to `backend/requirements.txt` (tell Task 1, who shares that file).
+- [ ] The HTML report opens in a browser and prints cleanly.
 
-## Later, when ML is ready
+## Working with the others
 
-The ML parts produce the same observation format as manual boxes, so the engine doesn't change;
-only `source` becomes `detector` or `ocr`. That's the reason for building on the contract now.
+- **Backend (Task 1)** calls `run_inspection`, `render_report`, `findings_to_csv` and `summarise`. Tell
+  them before changing any of these signatures.
+- **Frontend (Task 2)** displays your statuses and arrangement results exactly as defined in
+  `docs/contracts.md`. A new status or type needs a contract update first.
+- Merge `develop` into your branch daily: `git pull origin develop`. Open a pull request into `develop`
+  at the end of each milestone.
