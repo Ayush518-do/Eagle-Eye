@@ -778,8 +778,10 @@ export default function Results() {
         onClose={() => setIsAlignmentModalOpen(false)}
         imageId={activeImage.image_id}
         photoUrl={activeImage.url?.startsWith('http') ? activeImage.url : `${API_URL}${activeImage.url || ''}`}
-        drawingUrl={data?.design_revision_id ? getDrawingPageUrl(data.design_revision_id, 1) : ''}
-        drawingPage={1}
+        drawingUrl={data?.design_revision_internal_id
+          ? getDrawingPageUrl(data.design_revision_internal_id, data?.alignment_default_page || 5)
+          : ''}
+        drawingPage={data?.alignment_default_page || 5}
         imageDimensions={{
           width: activeImage.width || 1600,
           height: activeImage.height || 1000,
