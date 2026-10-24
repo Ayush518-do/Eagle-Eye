@@ -182,6 +182,93 @@ def _evidence_score(f: models.Finding) -> tuple[Optional[float], list[str]]:
     return None, sources
 
 
+def _run_detector_on_images(session: Session, inspection_id: str) -> None:
+    """Run the trained RF-DETR component detector on every image of the inspection that has
+    no detector observations yet.
+
+    Loads the model lazily (first call warms up on the GPU), tile-aware via
+    ml.detection.detector.RFDETRDetector. Produces one Contract B observation per
+    detection with source='detector', kind='component'. Failures per image are logged, not fatal.
+    """
+    try:
+        from backend.app.config import get_settings
+        from backend.app.services.storage import find_upload
+    except ImportError:
+        return
+    settings = get_settings()
+    weights = (settings.detector_weights_path or "").strip()
+    if not weights:
+        log.info("DETECTOR_WEIGHTS_PATH is not set; skipping detector inference.")
+        return
+    from pathlib import Path as _Path
+    weights_path = _Path(weights)
+    if not weights_path.exists():
+        log.warning("Detector weights not found at %s; skipping detector inference.", weights_path)
+        return
+    try:
+        from PIL import Image, ImageOps
+        from ml.detection.detector import RFDETRDetector
+    except ImportError as exc:
+        log.warning("Detector packages unavailable (%s); skipping detector inference.", exc)
+        return
+    model_name = settings.detector_model_name or "rf-detr-small"
+    try:
+        detector = _get_cached_detector(weights_path)
+    except Exception as exc:
+        log.warning("Could not initialise RF-DETR detector: %s", exc)
+        return
+    for img in images_of(session, inspection_id):
+        already = session.scalars(select(models.Observation).where(
+            models.Observation.image_id == img.id, models.Observation.source == "detector").limit(1)).first()
+        if already is not None:
+            continue
+        found = find_upload(settings.upload_dir, img.file_id)
+        if found is None:
+            log.warning("Image %s file not on disk; skipping detector.", img.id)
+            continue
+        try:
+            pil = ImageOps.exif_transpose(Image.open(found[0])).convert("RGB")
+            dets = detector.predict(pil)
+        except Exception as exc:
+            log.warning("Detector failed on image %s: %s", img.id, exc)
+            continue
+        log.info("Detector on image %s produced %d component detections.", img.id, len(dets))
+        for i, d in enumerate(sorted(dets, key=lambda d: (d["bbox"][1], d["bbox"][0])), start=1):
+            try:
+                session.add(models.Observation(
+                    image_id=img.id,
+                    observation_id=f"DET-{img.id}-{i:03d}",
+                    source="detector",
+                    kind="component",
+                    class_name=d.get("class_name") or "mcb",
+                    bbox=[round(float(v), 1) for v in d["bbox"]],
+                    confidence=round(float(d.get("score") or 0.0), 4),
+                    text=None,
+                    raw_text=None,
+                    text_confidence=None,
+                    model={"name": model_name, "version": "eagle-v1", "weights_sha256": None},
+                ))
+            except Exception as exc:
+                log.warning("Could not store detector observation on %s: %s", img.id, exc)
+        session.flush()
+
+
+# Module-level cache so successive inspections re-use the loaded weights (not the SQLAlchemy
+# session). Reset when the process restarts.
+_DETECTOR_CACHE: dict[str, object] = {}
+
+
+def _get_cached_detector(weights_path):
+    """Load (and remember) the trained RF-DETR detector by weights path."""
+    key = str(weights_path.resolve())
+    cached = _DETECTOR_CACHE.get(key)
+    if cached is None:
+        from ml.detection.detector import RFDETRDetector
+        cached = RFDETRDetector(weights_path, size="small", threshold=0.3)
+        _DETECTOR_CACHE[key] = cached
+    return cached
+
+
 def _run_ocr_on_images(session: Session, inspection_id: str, expected_tags: list[str]) -> None:
     """Run the OCR tag reader on every image of the inspection that has no ocr observations yet.
 
@@ -260,16 +347,20 @@ def run_inspection_job(factory: sessionmaker[Session], inspection_id: str) -> No
     """Background task. The endpoint has already set the state to `running`.
 
     Steps:
-    1) Run the OCR tag reader on every image of the inspection to produce tag_label observations
+    1) Run the trained RF-DETR component detector on every image to produce 'component' observations
+       (unless detector observations already exist, e.g. from a previous run). Needs
+       DETECTOR_WEIGHTS_PATH to point at a readable .pth file; silently skipped otherwise.
+    2) Run the OCR tag reader on every image to produce tag_label observations
        (unless OCR observations are already stored for that image, e.g. from a previous run or a
        manual upload). Failures per image are logged, not fatal.
-    2) Build Contract B observation lists per image and run the comparison engine.
-    3) Save findings and mark the inspection done. Any uncaught exception marks the run failed.
+    3) Build Contract B observation lists per image and run the comparison engine.
+    4) Save findings and mark the inspection done. Any uncaught exception marks the run failed.
     """
     with factory() as session:
         try:
             inspection = session.get(models.Inspection, inspection_id)
             expected = [expected_item_schema(r) for r in list_expected_items(session, inspection.design_revision_id)]
+            _run_detector_on_images(session, inspection_id)
             _run_ocr_on_images(session, inspection_id, [e.tag for e in expected])
             by_image = {img.id: [observation_schema(o) for o in observations_of(session, img.id)]
                         for img in images_of(session, inspection_id)}
