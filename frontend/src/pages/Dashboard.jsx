@@ -151,7 +151,7 @@ export default function Dashboard() {
 
       {/* Metrics Row */}
       <div className="metrics-grid">
-        <div className="metric-card">
+        <div className="metric-card m-b">
           <div className="metric-label">
             <span>Enrolled Cabinets</span>
             <Server size={16} color="var(--color-navy)" />
@@ -160,7 +160,7 @@ export default function Dashboard() {
           <div className="metric-sub">Registered serial configurations</div>
         </div>
 
-        <div className="metric-card">
+        <div className="metric-card m-r">
           <div className="metric-label">
             <span>Pending Reviews</span>
             <AlertTriangle size={16} color="var(--color-status-review)" />
@@ -171,7 +171,7 @@ export default function Dashboard() {
           <div className="metric-sub">Uncertain observations awaiting sign-off</div>
         </div>
 
-        <div className="metric-card">
+        <div className="metric-card m-f">
           <div className="metric-label">
             <span>Flagged Mismatches</span>
             <AlertTriangle size={16} color="var(--color-status-mismatch)" />
@@ -182,7 +182,7 @@ export default function Dashboard() {
           <div className="metric-sub">Rating or tag BOM discrepancies</div>
         </div>
 
-        <div className="metric-card">
+        <div className="metric-card m-p">
           <div className="metric-label">
             <span>Detector Status</span>
             <Cpu size={16} color="var(--color-navy)" />
@@ -208,6 +208,44 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Status Mix — one-glance pipe chart over the recent inspections list */}
+      {inspections.length > 0 && (
+        <div className="panel" style={{ marginBottom: '20px' }}>
+          <div className="panel-header" style={{ marginBottom: '6px' }}>
+            <div>
+              <h2 className="panel-title">Inspection Mix</h2>
+              <p className="page-desc" style={{ fontSize: '12px' }}>
+                Across the most recent {inspections.length} inspections.
+              </p>
+            </div>
+          </div>
+          {(() => {
+            const total = Math.max(1, inspections.length);
+            const pass = inspections.filter((i) => i.overall_status === 'pass').length;
+            const review = inspections.filter((i) => i.overall_status === 'review_required').length;
+            const miss = inspections.filter((i) => i.overall_status === 'mismatch_detected').length;
+            const other = total - pass - review - miss;
+            const pct = (n) => `${((n / total) * 100).toFixed(0)}%`;
+            return (
+              <>
+                <div className="status-pipe">
+                  {pass > 0 && <div className="seg-pass" style={{ flex: pass }}>{pass} pass</div>}
+                  {review > 0 && <div className="seg-review" style={{ flex: review }}>{review} review</div>}
+                  {miss > 0 && <div className="seg-miss" style={{ flex: miss }}>{miss} mismatch</div>}
+                  {other > 0 && <div className="seg-empty" style={{ flex: other }}>{other} pending</div>}
+                </div>
+                <div className="pipe-legend">
+                  <span><i style={{ background: 'var(--color-status-approved)' }} /> Pass {pct(pass)}</span>
+                  <span><i style={{ background: 'var(--color-status-review)' }} /> Review {pct(review)}</span>
+                  <span><i style={{ background: 'var(--color-status-mismatch)' }} /> Mismatch {pct(miss)}</span>
+                  {other > 0 && <span><i style={{ background: 'var(--color-border)' }} /> Pending {pct(other)}</span>}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Recent Inspections Table */}
       <div className="panel">
