@@ -510,6 +510,96 @@ code, pre, .mono, .tag-code {
   color: var(--color-status-inconclusive);
 }
 
+.badge-order-changed {
+  background-color: #ddf4ff;
+  border-color: #54aeff;
+  color: #0969da;
+}
+
+/* Arrangement / Order View */
+.arrangement-section {
+  margin-top: 24px;
+}
+
+.arrangement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.arrangement-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  box-shadow: var(--shadow-flat);
+}
+
+.arrangement-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.arrangement-group-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-navy);
+}
+
+.arrangement-direction {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.arrangement-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.arrangement-row-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  width: 75px;
+  text-transform: uppercase;
+}
+
+.arrangement-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-sequence-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-navy);
+}
+
+.tag-sequence-item.out-of-order {
+  background-color: #ddf4ff;
+  border: 1.5px solid #0969da;
+  color: #0969da;
+  font-weight: 700;
+}
+
 /* Two-Column Inspection Workspace */
 .results-workspace {
   display: grid;

@@ -16,6 +16,11 @@ const STATUS_CONFIG = {
   
   inconclusive: { label: 'Inconclusive', className: 'badge-inconclusive' },
   pending: { label: 'Pending', className: 'badge-pending' },
+
+  // Arrangement statuses
+  matches: { label: 'Arrangement matches', className: 'badge-approved' },
+  order_changed: { label: 'Order changed: review required', className: 'badge-order-changed' },
+  not_enough_evidence: { label: 'Not enough tags read to check the order', className: 'badge-inconclusive' },
 };
 
 export default function StatusBadge({ status, customLabel = null }) {

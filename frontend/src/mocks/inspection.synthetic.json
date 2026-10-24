@@ -146,6 +146,24 @@
         "reviews": []
       }
     ],
+    "arrangement": [
+      {
+        "group": "left_breaker_rail",
+        "direction": "top_to_bottom",
+        "expected_order": ["CB11", "CB12", "CB13", "CB14", "CB15", "CB16"],
+        "observed_order": ["CB11", "CB12", "CB14", "CB13", "CB15", "CB16"],
+        "out_of_order": ["CB13", "CB14"],
+        "status": "order_changed"
+      },
+      {
+        "group": "power_row_lower",
+        "direction": "left_to_right",
+        "expected_order": ["PS11", "PS12", "PS13"],
+        "observed_order": ["PS11", "PS12", "PS13"],
+        "out_of_order": [],
+        "status": "matches"
+      }
+    ],
     "counts": {
       "verified": 1,
       "potential_mismatch": 1,

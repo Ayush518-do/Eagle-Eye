@@ -25,6 +25,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import SyntheticBanner from '../components/SyntheticBanner.jsx';
 import Modal from '../components/Modal.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
+import ArrangementSection from '../components/ArrangementSection.jsx';
 
 export default function Results() {
   const { inspectionId } = useParams();
@@ -519,8 +520,11 @@ export default function Results() {
               </div>
             </div>
           )}
-        </div>
       </div>
+      </div>
+
+      {/* Component Arrangement / Sequence Section */}
+      <ArrangementSection arrangement={data?.arrangement} />
 
       {/* Reject Modal Confirmation */}
       <Modal
