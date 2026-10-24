@@ -48,3 +48,7 @@ Thumbs.db
 
 # Local Claude Code session files
 .claude/
+
+# Local dev-server logs (uvicorn + vite)
+*.log
+RULES.md
