@@ -98,6 +98,8 @@ This repository is an initial scaffold. Features are planned until their impleme
 
 ## Team
 
+Work is split into four parts with one branch each; see [`docs/team/README.md`](docs/team/README.md) and the hand-over formats in [`docs/contracts.md`](docs/contracts.md).
+
 - Ayush
 - Pranay
 - Aditya

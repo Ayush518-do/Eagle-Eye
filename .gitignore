@@ -30,6 +30,10 @@ ml/weights/
 data/raw/
 data/processed/
 data/external/
+# Company photos, drawings, labels and answer keys: never commit
+data/private/
+models/*.pth
+models/*.safetensors
 backend/uploads/
 outputs/
 *.db
