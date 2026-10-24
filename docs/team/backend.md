@@ -179,6 +179,19 @@ passport, and the old finding row is unchanged.
 
 Add `FRONTEND_URL=http://localhost:5173` to `.env.example`.
 
+### Ghost overlay (M3, contract section E)
+
+| # | Method and path | Purpose |
+|---|---|---|
+| 22 | `GET /api/design-revisions/{id}/drawing-pages/{page}.png?width=` | Render one drawing page as PNG, with header `X-Page-Size` in PDF points. Use **pypdfium2** (`pip install pypdfium2`, permissive licence). **Don't use PyMuPDF**: it's AGPL |
+| 23 | `PUT` / `GET` / `DELETE /api/images/{image_id}/alignment` | Store the 4 drawing points + 4 photo points (new table `image_alignments`: `image_id`, `drawing_page`, `drawing_points` JSON, `photo_points` JSON, `created_at`) |
+| 24 | `GET /api/inspections/{id}` (extend) | For each image with an alignment, call Task 3's `project_expected_positions(...)` and add `alignment_set`, `ghost[]`, and `expected_bbox` on `missing` findings |
+
+Validation for 23: exactly 4 points each; photo points inside the photo; the 4 points must not lie on
+one line (Task 3's function raises a clear error you return as 400).
+
+**Check:** save an alignment for a test photo; `GET /api/inspections/{id}` shows ghost boxes in the photo area.
+
 ## Milestone 4: ML integration (when the ML branches are merged)
 
 1. In the run task, call `ml.interfaces.detect_components()` and `read_tags()` for each photo. Store

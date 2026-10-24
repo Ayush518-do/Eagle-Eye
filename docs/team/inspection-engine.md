@@ -265,6 +265,39 @@ Add the cabinet's QR code (`pip install qrcode[pil]`) to the report header, link
 
 ---
 
+### 3.5 Ghost overlay projection (contract section E)
+`backend/app/pipeline/ghost.py`. With 4 matching corner points on the drawing and on the photo,
+OpenCV computes a **homography**: a transform that maps any point on one flat surface to the same
+point on the other, even when the photo is taken at an angle.
+
+```python
+import numpy as np, cv2
+
+def project_boxes(drawing_points, photo_points, boxes):
+    """Map boxes from drawing coordinates (PDF points) to photo pixels."""
+    M = cv2.getPerspectiveTransform(np.float32(drawing_points), np.float32(photo_points))
+    out = []
+    for x1, y1, x2, y2 in boxes:
+        corners = np.float32([[x1, y1], [x2, y1], [x2, y2], [x1, y2]]).reshape(-1, 1, 2)
+        p = cv2.perspectiveTransform(corners, M).reshape(-1, 2)
+        out.append([float(p[:, 0].min()), float(p[:, 1].min()), float(p[:, 0].max()), float(p[:, 1].max())])
+    return out
+
+# Example: drawing panel 100..300 × 200..600 points, photo panel 1000..3000 × 500..2900 pixels
+# project_boxes(d, p, [[150, 300, 200, 320]])  ->  [[1500.0, 1100.0, 2000.0, 1220.0]]
+```
+
+`project_expected_positions(expected_items, alignment, image_size) -> list[{"tag", "bbox"}]`:
+
+- Only items whose `layout.page` equals `alignment.drawing_page`.
+- If `layout.anchor` is `callout`, the box sits beside the part, not on it. Use only its height (y) to
+  place a row marker across the rail, and say "approximate row" in the ghost label.
+- Drop boxes that land outside the photo.
+- Raise `ValueError("alignment points are on one line")` if 3 of the 4 points are nearly in a straight line.
+- Add `expected_bbox` to `missing` findings. **Never** change a status because of the ghost: it's a hint.
+
+Tests: the example above; points in a different order; a box outside the photo is dropped; points on one line raise an error.
+
 ## Milestone 4: ML integration (when models are connected)
 
 - Real `ocr`, `detector` and `zero_shot` observations flow through the same functions. Re-run every

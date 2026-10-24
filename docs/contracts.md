@@ -3,12 +3,14 @@
 These are the agreed data formats between the parts of Eagle Eye. Each team codes against this file,
 not against another team's code, which is what lets everyone work at the same time.
 
-`contract_version: 0.2`
+`contract_version: 0.3`
 
 Change this file only with agreement from both sides of a hand-over, and bump the version when you do.
 **0.2 adds:** arrangement (group + position) and `component_type` on expected items; finding types
 `order_changed` and `type_mismatch`; evidence sources and score on findings; the arrangement summary;
 the analytics response.
+**0.3 adds:** ghost overlay: drawing layout position per expected item, photo alignment points,
+`expected_bbox` on findings and ghost boxes per photo (section E).
 
 **Rules for every format:**
 
@@ -37,6 +39,7 @@ Produced by the drawing parser (ML) or typed in by hand in the parts editor (fro
       "quantity": 1,
       "rating": { "value": "16 A", "source": "schematic", "page": 9, "needs_review": false },
       "arrangement": { "group": "left_breaker_rail", "position": 3, "direction": "top_to_bottom" },
+      "layout": { "page": 5, "view": "left_inside", "bbox": [97.9, 294.4, 115.2, 301.3], "anchor": "callout" },
       "source_page": 5
     },
     {
@@ -60,6 +63,7 @@ Produced by the drawing parser (ML) or typed in by hand in the parts editor (fro
 | `arrangement.group` | Name of a row or rail of parts that sit in a line, e.g. `left_breaker_rail` |
 | `arrangement.position` | 1 = first in that group, counted in `direction` |
 | `arrangement.direction` | `top_to_bottom` or `left_to_right` |
+| `layout` | Where the tag sits on the drawing's general-arrangement page: `page`, `view` (e.g. `front_inside`), `bbox` in **PDF points** (the drawing's own coordinates). `anchor` = `component` (tiny tag text drawn on the part itself) or `callout` (label beside the drawing, same height as the part but off to the side). Used for the ghost overlay |
 
 `component_type` from the tag prefix, when the drawing doesn't say otherwise:
 
@@ -146,7 +150,8 @@ made-up observations.
   "overall_status": "review_required",
   "images": [
     { "image_id": "IMG-001", "url": "/api/images/IMG-001", "width": 4096, "height": 3072,
-      "quality_flags": ["low_sharpness"] }
+      "quality_flags": ["low_sharpness"], "alignment_set": true,
+      "ghost": [ { "tag": "CB14", "bbox": [1500, 1100, 2000, 1220], "status": "inconclusive" } ] }
   ],
   "findings": [
     {
@@ -163,6 +168,7 @@ made-up observations.
       "status": "potential_mismatch",
       "reason": "Rating on the breaker differs from the drawing.",
       "evidence": [ { "image_id": "IMG-001", "bbox": [1200, 830, 1290, 1105] } ],
+      "expected_bbox": null,
       "reviews": []
     }
   ],
@@ -226,3 +232,38 @@ Reviews are added as new events. The original finding is never overwritten. `rev
   "per_day": [ { "date": "2026-10-24", "inspections": 3, "mismatch_detected": 1 } ]
 }
 ```
+
+## E. Ghost overlay: alignment and expected positions
+
+The ghost overlay lays the drawing, faded, over a photo and shows where each expected part *should* be.
+The drawing and the photo don't line up by themselves, so a person clicks the **same 4 corners** (for
+example, the corners of the mounting plate) once on the drawing page and once on the photo.
+
+Save alignment: `PUT /api/images/{image_id}/alignment`
+
+```json
+{
+  "drawing_page": 5,
+  "drawing_points": [[394, 177], [580, 177], [580, 637], [394, 637]],
+  "photo_points":   [[640, 980], [3520, 1010], [3490, 2950], [610, 2920]]
+}
+```
+
+- `drawing_points` are in PDF points on that page; `photo_points` are in original-photo pixels.
+- Points go in the same order on both: top-left, top-right, bottom-right, bottom-left.
+- `GET` on the same path returns it; `DELETE` removes it.
+
+Drawing page image: `GET /api/design-revisions/{id}/drawing-pages/{page}.png?width=2000` returns the
+page rendered as a picture, plus the header `X-Page-Size: 1191x842` (page size in PDF points), so the
+frontend can convert clicks on the picture into PDF points.
+
+With an alignment saved, the inspection result (section C) includes per image:
+
+- `alignment_set: true`
+- `ghost[]`: one box per expected item whose `layout` is on that drawing page, mapped into photo
+  pixels, with its finding status.
+- Findings of type `missing` get `expected_bbox`: the approximate spot on the photo where the part
+  should be.
+
+**Ghost boxes are approximate hints.** The drawing isn't drawn exactly to scale and the photo is taken
+at an angle, so they never decide a finding on their own. They only show the reviewer where to look.

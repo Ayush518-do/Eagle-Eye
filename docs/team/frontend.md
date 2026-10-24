@@ -194,6 +194,29 @@ From `GET /api/analytics` (contract D):
 
 ---
 
+### 3.4 Ghost overlay (contract section E)
+On the results page, a **Ghost overlay** toggle for each photo:
+
+1. **Align (once per photo):** show the drawing page (`GET …/drawing-pages/5.png`) next to the photo.
+   The user clicks 4 corners on the drawing, then the same 4 on the photo, in the order top-left,
+   top-right, bottom-right, bottom-left. Number each click so the order is obvious.
+   Convert clicks to coordinates:
+   ```js
+   // drawing picture shown at clientWidth px; X-Page-Size header = "1191x842" (PDF points)
+   const [pageW] = pageSize.split('x').map(Number);
+   const toPdf = (x, y) => [x * pageW / imgEl.clientWidth, y * pageW / imgEl.clientWidth];
+   // photo clicks use the same scale rule as manual boxes (original-photo pixels)
+   ```
+   Save with `PUT /api/images/{id}/alignment`; "Reset alignment" calls `DELETE`.
+2. **Show the ghost:** draw `ghost[]` boxes as **dashed outlines with the tag name** ("expected here"),
+   coloured by status. For `missing` findings, highlight their `expected_bbox`.
+3. **Optional faded drawing:** warp the drawing picture onto the photo with a CSS `matrix3d` transform
+   from the 4 point pairs, plus a 0–100 % transparency slider. If this takes more than 2 hours, skip it;
+   the ghost boxes are the useful part.
+4. Label it clearly: "Approximate positions from the drawing".
+
+**Check:** align a photo; the CB11–CB16 ghost boxes land near the real breakers; reload and they're still there.
+
 ## Milestone 4: ML integration (when models are connected)
 
 - **Source badges** on each finding: `OCR`, `Detector`, `Zero-shot`, `Manual`, plus the `evidence_score`
