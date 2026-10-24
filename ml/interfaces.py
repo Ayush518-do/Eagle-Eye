@@ -19,8 +19,19 @@ class ModelUnavailableError(RuntimeError):
 
 
 def parse_drawing(pdf_path: str) -> dict:
-    """Drawing PDF -> contract A (expected items)."""
-    raise ModelUnavailableError("Drawing parser not implemented yet (ML drawing/OCR branch).")
+    """Drawing PDF -> contract A (expected items, plus BOM, BOM checks and arrangement groups).
+
+    Needs a PDF with a text layer (exported from CAD). A scanned drawing has none: then it raises
+    ModelUnavailableError so the parts list can be typed in by hand instead.
+    """
+    try:
+        from ml.drawing.parse_drawing import to_contract
+    except ImportError as exc:
+        raise ModelUnavailableError(f"Drawing parser packages not installed ({exc}): pip install -r ml/requirements-ocr.txt") from exc
+    result = to_contract(Path(pdf_path))
+    if not result["items"]:
+        raise ModelUnavailableError("No component tags found in the drawing (no text layer?). Enter the parts list by hand.")
+    return result
 
 
 def _sha256(path: Path) -> str:
@@ -110,6 +121,17 @@ def detect_components(image_path: str) -> dict:
     return result
 
 
-def read_tags(image_path: str) -> dict:
-    """Cabinet photo -> contract B with kind='tag_label'."""
-    raise ModelUnavailableError("Tag reader not implemented yet (ML drawing/OCR branch).")
+def read_tags(image_path: str, expected_tags: list[str] | None = None) -> dict:
+    """Cabinet photo -> contract B with kind='tag_label' (stickers) and kind='rating_text' (e.g. "16 A").
+
+    Pass the drawing's tags as `expected_tags` so look-alike OCR mistakes ("C811") are corrected to a
+    known tag ("CB11"); the raw reading stays in `raw_text`. Coordinates are in the upright photo.
+    """
+    try:
+        from ml.ocr.read_tags import OCRUnavailableError, read_tags as _read_tags
+    except ImportError as exc:
+        raise ModelUnavailableError(f"OCR packages not installed ({exc}): pip install -r ml/requirements-ocr.txt") from exc
+    try:
+        return _read_tags(image_path, expected_tags, with_ratings=True)
+    except OCRUnavailableError as exc:
+        raise ModelUnavailableError(str(exc)) from exc

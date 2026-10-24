@@ -135,12 +135,14 @@ def find_tags(image: Image.Image, expected: Optional[Iterable[str]] = None, raw:
 
 
 def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_id: Optional[str] = None,
-              **kw) -> dict:
-    """Contract B (kind='tag_label') for one photo."""
+              with_ratings: bool = False, **kw) -> dict:
+    """Contract B for one photo: kind='tag_label', plus kind='rating_text' when with_ratings=True.
+    The photo is read once for both."""
     path = Path(image_path)
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
-    tags = find_tags(image, expected, **kw)
-    return {
+    raw = read_raw(image, **kw)
+    tags = find_tags(image, expected, raw=raw)
+    result = {
         "contract_version": "0.3",
         "image_id": image_id or path.stem,
         "image_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -161,6 +163,16 @@ def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_i
             for i, t in enumerate(sorted(tags, key=lambda t: (t["bbox"][1], t["bbox"][0])), start=1)
         ],
     }
+    if with_ratings:
+        from ml.ocr.ratings import rating_observations
+        for i, r in enumerate(rating_observations(raw), start=1):
+            result["observations"].append({
+                "observation_id": f"RAT-{i:03d}", "source": "ocr", "kind": "rating_text",
+                "class_name": "rating_text", "bbox": [round(v, 1) for v in r["bbox"]], "confidence": None,
+                "text": r["value"], "raw_text": r["raw"], "text_confidence": round(r["score"], 4),
+                "model": {"name": ENGINE_NAME, "version": None, "weights_sha256": None},
+            })
+    return result
 
 
 def main() -> None:

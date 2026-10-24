@@ -215,3 +215,34 @@ def test_lcs_order_check():
     keep = lcs(exp, obs)
     assert len(keep) == 5 and [t for t in obs if t not in keep] in (["CB13"], ["CB14"])
     assert lcs(exp, exp) == exp
+
+
+# ---------- shared entry points used by the backend ----------
+def test_interface_parse_drawing(tmp_path):
+    from ml.interfaces import parse_drawing
+    pdf = tmp_path / "d.pdf"
+    _make_drawing(pdf)
+    out = parse_drawing(str(pdf))
+    assert {i["tag"] for i in out["items"]} == {"CB11", "CB12", "CB13", "PS11"} and out["contract_version"] == "0.3"
+
+
+def test_interface_parse_drawing_without_tags_refuses(tmp_path):
+    from reportlab.pdfgen import canvas
+    from ml.interfaces import ModelUnavailableError, parse_drawing
+    pdf = tmp_path / "empty.pdf"
+    c = canvas.Canvas(str(pdf)); c.drawString(100, 700, "no tags here"); c.save()
+    with pytest.raises(ModelUnavailableError, match="by hand"):
+        parse_drawing(str(pdf))
+
+
+def test_interface_read_tags_returns_tags_and_ratings(tmp_path):
+    pytest.importorskip("rapidocr_onnxruntime")
+    from ml.interfaces import read_tags
+    img = Image.new("RGB", (900, 400), "white")
+    d = ImageDraw.Draw(img)
+    d.text((60, 40), "CB11", fill="black", font=ImageFont.load_default(size=80))
+    d.text((60, 200), "16A", fill="black", font=ImageFont.load_default(size=80))
+    p = tmp_path / "x.png"; img.save(p)
+    obs = read_tags(str(p), ["CB11", "CB12"])["observations"]
+    kinds = {(o["kind"], o["text"]) for o in obs}
+    assert ("tag_label", "CB11") in kinds and ("rating_text", "16 A") in kinds

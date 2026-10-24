@@ -86,13 +86,24 @@ def rebuild_stacked_text(chars: list[Word], x_tolerance: float = 2.0) -> list[st
 
 
 # ------------------------------------------------------------------ BOM
-def parse_bom(pdf_path: Path) -> list[dict]:
-    """Read every 'BILL OF MATERIAL' page. Columns are found from the header words' x positions."""
+def bom_pages(words: list[Word]) -> list[int]:
+    """Pages whose title says BILL OF MATERIAL (found from words already read, so pages aren't read twice)."""
+    by_page = defaultdict(set)
+    for w in words:
+        if w.text in ("BILL", "MATERIAL"):
+            by_page[w.page].add(w.text)
+    return sorted(p for p, found in by_page.items() if found == {"BILL", "MATERIAL"})
+
+
+def parse_bom(pdf_path: Path, pages: list[int] | None = None) -> list[dict]:
+    """Read the 'BILL OF MATERIAL' pages. Columns are found from the header words' x positions.
+    `pages`: 1-based page numbers to read (default: find them, which reads every page)."""
     rows = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
-            text = page.extract_text() or ""
-            if "BILL OF MATERIAL" not in text:
+            if pages is not None and page_no not in pages:
+                continue
+            if pages is None and "BILL OF MATERIAL" not in (page.extract_text() or ""):
                 continue
             ws = page.extract_words(x_tolerance=1.5, y_tolerance=1)
             hdr = [w for w in ws if w["text"] in ("ITEM", "MANUFACTURER", "QTY")]
@@ -321,7 +332,7 @@ def to_contract(pdf_path: Path) -> dict:
             "source_page": first_page.get(tag),
         })
 
-    bom = parse_bom(pdf_path)
+    bom = parse_bom(pdf_path, bom_pages(words))
     checks = link_bom(items, bom) if bom else []
 
     layout_page = find_layout_page(words)
