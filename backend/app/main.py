@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app import __version__
+from backend.app.api.errors import register_error_handlers
 from backend.app.api.routes import router
 from backend.app.config import get_settings
 
@@ -28,4 +29,5 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "eagle-eye-api", "version": __version__}
 
 
+register_error_handlers(app)  # every error body is {"detail": "plain message"}
 app.include_router(router)
