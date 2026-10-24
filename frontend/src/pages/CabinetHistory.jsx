@@ -144,7 +144,7 @@ export default function CabinetHistory() {
 
       {/* Overview Cards */}
       <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '24px' }}>
-        <div className="metric-card">
+        <div className="metric-card m-b">
           <div className="metric-label">
             <span>Passport Verifications</span>
             <Clock size={16} color="var(--color-navy)" />
@@ -153,7 +153,12 @@ export default function CabinetHistory() {
           <div className="metric-sub">Total historical inspection runs</div>
         </div>
 
-        <div className="metric-card">
+        <div className={`metric-card ${
+          latestInspection?.overall_status === 'pass' ? 'm-p'
+          : latestInspection?.overall_status === 'mismatch_detected' ? 'm-f'
+          : latestInspection?.overall_status === 'review_required' ? 'm-r'
+          : 'm-b'
+        }`}>
           <div className="metric-label">
             <span>Latest Quality Status</span>
             <ShieldCheck size={16} color="var(--color-navy)" />
@@ -172,7 +177,7 @@ export default function CabinetHistory() {
           </div>
         </div>
 
-        <div className="metric-card">
+        <div className="metric-card m-p">
           <div className="metric-label">
             <span>Design Revision</span>
             <Layers size={16} color="var(--color-navy)" />
@@ -206,8 +211,14 @@ export default function CabinetHistory() {
           </div>
         ) : (
           <div className="timeline">
-            {inspections.map((insp, index) => (
-              <div key={insp.inspection_id} className="timeline-item">
+            {inspections.map((insp, index) => {
+              const sx = insp.overall_status;
+              const toneClass = sx === 'pass' ? 'passed'
+                : sx === 'mismatch_detected' ? 'mismatch'
+                : sx === 'review_required' ? 'review'
+                : '';
+              return (
+              <div key={insp.inspection_id} className={`timeline-item ${toneClass}`}>
                 <div className="timeline-marker">
                   {index + 1}
                 </div>
@@ -261,7 +272,8 @@ export default function CabinetHistory() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
