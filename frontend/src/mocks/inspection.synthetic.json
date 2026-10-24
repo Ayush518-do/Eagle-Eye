@@ -1,26 +1,282 @@
 {
-  "_note": "SYNTHETIC DATA for building the UI only. Not a real inspection. Remove before the demo.",
-  "inspection_id": "INS-SYNTHETIC",
-  "cabinet_id": "CAB-SYNTHETIC",
-  "design_revision_id": "REV-A",
-  "created_at": "2026-10-24T10:00:00Z",
-  "overall_status": "review_required",
-  "images": [
-    { "image_id": "IMG-SYN-1", "url": "", "width": 1600, "height": 1000, "quality_flags": ["low_sharpness"] }
+  "source": "synthetic",
+  "_note": "SYNTHETIC DATA for local development and offline preview. Never used in production demo results.",
+  "inspection": {
+    "inspection_id": "INS-SYNTH-849",
+    "cabinet_id": "CAB-2024-X401",
+    "cabinet_name": "Main Distribution Panel Alpha",
+    "cabinet_serial": "SN-94820-2024",
+    "design_revision_id": "REV-B",
+    "created_at": "2026-10-24T14:30:00Z",
+    "overall_status": "review_required",
+    "images": [
+      {
+        "image_id": "IMG-001",
+        "url": "",
+        "width": 1600,
+        "height": 1000,
+        "filename": "cabinet_main_elevation.jpg",
+        "quality_flags": ["good_lighting"],
+        "alignment_set": true,
+        "ghost": [
+          { "tag": "CB11", "bbox": [180, 220, 320, 680], "status": "potential_mismatch" },
+          { "tag": "CB12", "bbox": [340, 220, 480, 680], "status": "needs_review" },
+          { "tag": "PS13", "bbox": [540, 200, 880, 720], "status": "verified" },
+          { "tag": "IO21", "bbox": [950, 230, 1180, 690], "status": "inconclusive" }
+        ]
+      },
+      {
+        "image_id": "IMG-002",
+        "url": "",
+        "width": 1600,
+        "height": 1000,
+        "filename": "breaker_rail_closeup.jpg",
+        "quality_flags": ["low_sharpness"]
+      }
+    ],
+    "findings": [
+      {
+        "finding_id": "F-001",
+        "type": "rating_mismatch",
+        "expected_tag": "CB11",
+        "expected_rating": "10A",
+        "observed_tag": "CB11",
+        "observed_rating": "16A",
+        "tag": "CB11",
+        "expected_value": "10A",
+        "observed_text": "16A",
+        "observation": {
+          "class_name": "mcb",
+          "bbox": [180, 220, 320, 680],
+          "detector_confidence": 0.94,
+          "ocr_confidence": 0.96,
+          "image_id": "IMG-001"
+        },
+        "evidence": [
+          { "image_id": "IMG-001", "bbox": [180, 220, 320, 680] }
+        ],
+        "status": "potential_mismatch",
+        "reason": "Drawing specifies 10A MCB, but photo OCR detected 16A marking.",
+        "sources": ["ocr", "detector"],
+        "evidence_score": 0.88,
+        "design_revision_id": "REV-B",
+        "reviews": [
+          {
+            "decision": "confirmed_by_reviewer",
+            "reviewer": "Archita",
+            "note": "Label clearly shows 16A",
+            "created_at": "2026-10-24T10:42:00Z"
+          }
+        ]
+      },
+      {
+        "finding_id": "F-002",
+        "type": "uncertain",
+        "expected_tag": "CB12",
+        "expected_rating": "16A",
+        "observed_tag": "CB12",
+        "observed_rating": "16A",
+        "tag": "CB12",
+        "expected_value": "16A",
+        "observed_text": "CB12",
+        "observation": {
+          "class_name": "mcb",
+          "bbox": [340, 220, 480, 680],
+          "detector_confidence": 0.88,
+          "ocr_confidence": 0.62,
+          "image_id": "IMG-001"
+        },
+        "evidence": [
+          { "image_id": "IMG-001", "bbox": [340, 220, 480, 680] }
+        ],
+        "status": "needs_review",
+        "sources": ["detector", "ocr"],
+        "evidence_score": 0.65,
+        "reason": "Low OCR reading confidence on breaker label.",
+        "design_revision_id": "REV-B",
+        "reviews": []
+      },
+      {
+        "finding_id": "F-003",
+        "type": "verified",
+        "expected_tag": "PS13",
+        "expected_rating": "24V 10A",
+        "observed_tag": "PS13",
+        "observed_rating": "24V 10A",
+        "tag": "PS13",
+        "expected_value": "24V 10A",
+        "observed_text": "PS13 24V",
+        "observation": {
+          "class_name": "power_supply",
+          "bbox": [540, 200, 880, 720],
+          "detector_confidence": 0.97,
+          "ocr_confidence": 0.98,
+          "image_id": "IMG-001"
+        },
+        "evidence": [
+          { "image_id": "IMG-001", "bbox": [540, 200, 880, 720] }
+        ],
+        "status": "verified",
+        "sources": ["detector", "ocr", "zero_shot"],
+        "evidence_score": 0.96,
+        "reason": "Expected power supply verified matching drawing specification.",
+        "design_revision_id": "REV-B",
+        "reviews": []
+      },
+      {
+        "finding_id": "F-004",
+        "type": "missing_component",
+        "expected_tag": "IO21",
+        "expected_rating": "Digital In 16ch",
+        "observed_tag": null,
+        "observed_rating": null,
+        "tag": "IO21",
+        "expected_value": "Digital In 16ch",
+        "observed_text": null,
+        "observation": null,
+        "evidence": [],
+        "expected_bbox": [950, 230, 1180, 690],
+        "status": "inconclusive",
+        "sources": [],
+        "evidence_score": null,
+        "reason": "Component tag not detected in uploaded views. Area may be partially occluded.",
+        "design_revision_id": "REV-B",
+        "reviews": []
+      },
+      {
+        "finding_id": "F-005",
+        "type": "unexpected_component",
+        "expected_tag": null,
+        "expected_rating": null,
+        "observed_tag": "IO29",
+        "observed_rating": "Analog Out 8ch",
+        "tag": "IO29",
+        "expected_value": "None",
+        "observed_text": "IO29",
+        "observation": {
+          "class_name": "io_module",
+          "bbox": [950, 230, 1180, 690],
+          "detector_confidence": 0.91,
+          "ocr_confidence": 0.89,
+          "image_id": "IMG-001"
+        },
+        "evidence": [
+          { "image_id": "IMG-001", "bbox": [950, 230, 1180, 690] }
+        ],
+        "status": "needs_review",
+        "sources": ["detector", "ocr"],
+        "evidence_score": 0.85,
+        "reason": "I/O module detected on DIN rail but not present in approved drawing BOM.",
+        "design_revision_id": "REV-B",
+        "reviews": []
+      }
+    ],
+    "arrangement": [
+      {
+        "group": "left_breaker_rail",
+        "direction": "top_to_bottom",
+        "expected_order": ["CB11", "CB12", "CB13", "CB14", "CB15", "CB16"],
+        "observed_order": ["CB11", "CB12", "CB14", "CB13", "CB15", "CB16"],
+        "out_of_order": ["CB13", "CB14"],
+        "status": "order_changed"
+      },
+      {
+        "group": "power_row_lower",
+        "direction": "left_to_right",
+        "expected_order": ["PS11", "PS12", "PS13"],
+        "observed_order": ["PS11", "PS12", "PS13"],
+        "out_of_order": [],
+        "status": "matches"
+      }
+    ],
+    "counts": {
+      "verified": 1,
+      "potential_mismatch": 1,
+      "needs_review": 2,
+      "inconclusive": 1
+    }
+  },
+  "cabinets": [
+    {
+      "cabinet_id": "CAB-2024-X401",
+      "name": "Main Distribution Panel Alpha",
+      "serial": "SN-94820-2024",
+      "status": "review_required",
+      "inspections_count": 2,
+      "last_inspected": "2026-10-24T14:30:00Z"
+    },
+    {
+      "cabinet_id": "CAB-2024-Y102",
+      "name": "Auxiliary Control Cabinet Beta",
+      "serial": "SN-10293-2024",
+      "status": "pass",
+      "inspections_count": 1,
+      "last_inspected": "2026-10-22T09:15:00Z"
+    },
+    {
+      "cabinet_id": "CAB-2024-Z550",
+      "name": "HVAC Power Distribution Unit",
+      "serial": "SN-55019-2024",
+      "status": "mismatch_detected",
+      "inspections_count": 3,
+      "last_inspected": "2026-10-23T16:45:00Z"
+    }
   ],
-  "findings": [
-    { "finding_id": "F-001", "type": "verified", "tag": "CB11", "expected_value": null, "observed_text": "CB11",
-      "detector_confidence": null, "ocr_confidence": 0.95, "status": "verified", "reason": null,
-      "evidence": [ { "image_id": "IMG-SYN-1", "bbox": [200, 180, 330, 230] } ] },
-    { "finding_id": "F-002", "type": "rating_mismatch", "tag": "CB12", "expected_value": "10 A", "observed_text": "16 A",
-      "detector_confidence": null, "ocr_confidence": 0.88, "status": "potential_mismatch", "reason": "Rating differs from drawing.",
-      "evidence": [ { "image_id": "IMG-SYN-1", "bbox": [380, 180, 510, 230] } ] },
-    { "finding_id": "F-003", "type": "verified", "tag": "CB13", "expected_value": null, "observed_text": "C813",
-      "detector_confidence": null, "ocr_confidence": 0.52, "status": "needs_review", "reason": "Tag read with low confidence.",
-      "evidence": [ { "image_id": "IMG-SYN-1", "bbox": [560, 180, 690, 230] } ] },
-    { "finding_id": "F-004", "type": "missing", "tag": "PS11", "expected_value": null, "observed_text": null,
-      "detector_confidence": null, "ocr_confidence": null, "status": "inconclusive",
-      "reason": "Tag not read in any photo. Not proof that the part is absent.", "evidence": [] }
-  ],
-  "counts": { "verified": 1, "potential_mismatch": 1, "needs_review": 1, "inconclusive": 1 }
+  "passport": {
+    "cabinet_id": "CAB-2024-X401",
+    "name": "Main Distribution Panel Alpha",
+    "serial": "SN-94820-2024",
+    "inspections": [
+      {
+        "inspection_id": "INS-SYNTH-849",
+        "created_at": "2026-10-24T14:30:00Z",
+        "overall_status": "review_required",
+        "inspector": "Automated + Archita",
+        "design_revision_id": "REV-B",
+        "summary": "1 potential mismatch, 2 items require review"
+      },
+      {
+        "inspection_id": "INS-SYNTH-802",
+        "created_at": "2026-10-20T11:00:00Z",
+        "overall_status": "mismatch_detected",
+        "inspector": "Automated",
+        "design_revision_id": "REV-A",
+        "summary": "CB11 rating mismatch detected (16A instead of 10A)"
+      }
+    ]
+  },
+  "analytics": {
+    "inspections": 12,
+    "overall": {
+      "pass": 5,
+      "review_required": 6,
+      "mismatch_detected": 1
+    },
+    "findings_by_type": {
+      "missing": 4,
+      "unexpected": 1,
+      "rating_mismatch": 2,
+      "order_changed": 3,
+      "type_mismatch": 0
+    },
+    "top_flagged_tags": [
+      { "tag": "CB14", "count": 3, "component_type": "mcb" },
+      { "tag": "PS11", "count": 2, "component_type": "power_supply" },
+      { "tag": "CB11", "count": 2, "component_type": "mcb" },
+      { "tag": "IO29", "count": 1, "component_type": "io_module" }
+    ],
+    "review_outcomes": {
+      "confirmed_by_reviewer": 4,
+      "rejected_by_reviewer": 2,
+      "pending": 5
+    },
+    "per_day": [
+      { "date": "2026-10-20", "inspections": 2, "mismatch_detected": 0 },
+      { "date": "2026-10-21", "inspections": 1, "mismatch_detected": 0 },
+      { "date": "2026-10-22", "inspections": 3, "mismatch_detected": 0 },
+      { "date": "2026-10-23", "inspections": 3, "mismatch_detected": 1 },
+      { "date": "2026-10-24", "inspections": 3, "mismatch_detected": 0 }
+    ]
+  }
 }
+
