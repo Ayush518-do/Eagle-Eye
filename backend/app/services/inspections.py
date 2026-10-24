@@ -138,17 +138,95 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
     )
 
 
+def _run_ocr_on_images(session: Session, inspection_id: str, expected_tags: list[str]) -> None:
+    """Run the OCR tag reader on every image of the inspection that has no ocr observations yet.
+
+    Writes one observation per OCR hit (`source="ocr"`, `kind="tag_label"`). Failures per image are
+    logged but do not fail the whole run — the engine simply sees no observations for that image.
+
+    Uses a FAST single-pass path (no tiling, no rotations) so one 4K photo finishes in a few seconds
+    instead of several minutes. Small/rotated tags may be missed; that is acceptable for the
+    prototype demo. A future wire-up can call the trained RF-DETR + OWLv2 detectors in addition.
+    """
+    try:
+        from PIL import Image, ImageOps
+        from backend.app.config import get_settings
+        from backend.app.services.storage import find_upload
+        from ml.ocr.read_tags import find_tags, clean
+        from ml.ocr.tag_matcher import match_tag
+    except ImportError as exc:
+        log.warning("OCR tag reader unavailable (%s); skipping observation extraction.", exc)
+        return
+    settings = get_settings()
+    expected_clean = [clean(t) for t in (expected_tags or [])]
+    for img in images_of(session, inspection_id):
+        already = session.scalars(select(models.Observation).where(
+            models.Observation.image_id == img.id, models.Observation.source == "ocr").limit(1)).first()
+        if already is not None:
+            continue  # user or earlier run already produced OCR observations for this image
+        found = find_upload(settings.upload_dir, img.file_id)
+        if found is None:
+            log.warning("Image %s file not on disk; skipping OCR.", img.id)
+            continue
+        try:
+            pil = ImageOps.exif_transpose(Image.open(found[0])).convert("RGB")
+            # Fast path: one pass, no tiling, no rotation. Enough for upright close-up tag stickers.
+            tile = max(pil.width, pil.height)
+            tags = find_tags(pil, expected_clean or None, tile=tile, overlap=0.0, rotations=(0,))
+            result = {
+                "observations": [{
+                    "observation_id": f"OCR-{img.id}-{i:03d}",
+                    "source": "ocr",
+                    "kind": "tag_label",
+                    "class_name": "tag_label",
+                    "bbox": [round(float(v), 1) for v in t["bbox"]],
+                    "confidence": None,
+                    "text": t["tag"],
+                    "raw_text": t["raw"],
+                    "text_confidence": round(float(t["score"]), 4),
+                    "model": {"name": "rapidocr-onnxruntime", "version": None, "weights_sha256": None},
+                } for i, t in enumerate(sorted(tags, key=lambda t: (t["bbox"][1], t["bbox"][0])), start=1)],
+            }
+        except Exception as exc:
+            log.warning("OCR failed on image %s: %s", img.id, exc)
+            continue
+        log.info("OCR on image %s found %d tag observations.", img.id, len(result.get("observations") or []))
+        for o in result.get("observations") or []:
+            try:
+                session.add(models.Observation(
+                    image_id=img.id,
+                    observation_id=o["observation_id"],
+                    source=o.get("source") or "ocr",
+                    kind=o.get("kind") or "tag_label",
+                    class_name=o.get("class_name") or "tag_label",
+                    bbox=o["bbox"],
+                    confidence=o.get("confidence"),
+                    text=o.get("text"),
+                    raw_text=o.get("raw_text"),
+                    text_confidence=o.get("text_confidence"),
+                    model=o.get("model"),
+                ))
+            except Exception as exc:
+                log.warning("Could not store OCR observation on %s: %s", img.id, exc)
+        session.flush()
+
+
 # ---------- the run ----------
 def run_inspection_job(factory: sessionmaker[Session], inspection_id: str) -> None:
     """Background task. The endpoint has already set the state to `running`.
 
-    Uses `compare()` until the engine team provides `run_inspection` (docs/team/backend.md,
-    Step 3). Starter limits: it matches tags only, so it produces no rating findings.
+    Steps:
+    1) Run the OCR tag reader on every image of the inspection to produce tag_label observations
+       (unless OCR observations are already stored for that image, e.g. from a previous run or a
+       manual upload). Failures per image are logged, not fatal.
+    2) Build Contract B observation lists per image and run the comparison engine.
+    3) Save findings and mark the inspection done. Any uncaught exception marks the run failed.
     """
     with factory() as session:
         try:
             inspection = session.get(models.Inspection, inspection_id)
             expected = [expected_item_schema(r) for r in list_expected_items(session, inspection.design_revision_id)]
+            _run_ocr_on_images(session, inspection_id, [e.tag for e in expected])
             by_image = {img.id: [observation_schema(o) for o in observations_of(session, img.id)]
                         for img in images_of(session, inspection_id)}
             findings = compare(expected, by_image)
