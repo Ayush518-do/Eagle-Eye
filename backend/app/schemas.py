@@ -171,6 +171,8 @@ class ImageInfo(BaseModel):
     quality_flags: list[str] = []
     alignment_set: bool = False
     ghost: list[GhostBox] = []
+    # True when this image is the cabinet's approved baseline / reference photo.
+    is_reference: bool = False
 
 
 class AlignmentIn(BaseModel):

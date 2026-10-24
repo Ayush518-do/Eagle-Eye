@@ -332,6 +332,11 @@ code, pre, .mono, .tag-code {
   color: var(--color-text-muted);
 }
 
+/* "Has reference" photo-tab indicator — subtle amber ring on the tab button */
+.btn.has-reference {
+  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+}
+
 /* Reference-compare toolbar (sits above the image viewer on Results) */
 .compare-bar {
   display: flex;

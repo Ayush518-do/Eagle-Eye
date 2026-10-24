@@ -29,7 +29,10 @@ import {
   deleteAlignment,
   getDrawingPageUrl,
   visualCompareImages,
+  setCabinetReferenceImage,
+  clearCabinetReferenceImage,
 } from '../api.js';
+import { Star } from 'lucide-react';
 import ImageWithBoxes from '../components/ImageWithBoxes.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import SyntheticBanner from '../components/SyntheticBanner.jsx';
@@ -68,6 +71,23 @@ export default function Results() {
   const [compareReferenceId, setCompareReferenceId] = useState('');
   const [compareResultByImage, setCompareResultByImage] = useState({}); // image_id -> {regions, diagnostic, sift_matches}
   const [isComparing, setIsComparing] = useState(false);
+
+  // Mark-as-reference flow — the cabinet's chosen baseline photo, if any.
+  const referenceImage = useMemo(() => data?.images?.find((i) => i.is_reference) || null, [data]);
+
+  const toggleReference = async (imageId) => {
+    if (!data?.cabinet_id) return;
+    try {
+      if (referenceImage?.image_id === imageId) {
+        await clearCabinetReferenceImage(data.cabinet_id);
+      } else {
+        await setCabinetReferenceImage(data.cabinet_id, imageId);
+      }
+      await loadInspection();
+    } catch (err) {
+      setActionFeedback(`Could not update reference photo: ${err.message}`);
+    }
+  };
 
   // Load Inspection Data
   const loadInspection = async () => {
@@ -125,6 +145,13 @@ export default function Results() {
     }
     return data.images[selectedImageIndex] || data.images[0];
   }, [data, selectedImageIndex]);
+
+  // Preselect the reference as the compare target the first time it appears (needs activeImage).
+  useEffect(() => {
+    if (referenceImage && !compareReferenceId && referenceImage.image_id !== activeImage?.image_id) {
+      setCompareReferenceId(referenceImage.image_id);
+    }
+  }, [referenceImage, activeImage, compareReferenceId]);
 
   // Map findings into SVG bounding boxes for ImageWithBoxes
   const boxes = useMemo(() => {
@@ -496,18 +523,33 @@ export default function Results() {
         <div>
           {/* Multiple Photos Selector Tab if more than 1 image */}
           {data?.images && data.images.length > 1 && (
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
               {data.images.map((img, idx) => (
                 <button
                   key={img.image_id}
                   type="button"
-                  className={`btn btn-sm ${selectedImageIndex === idx ? 'btn-primary' : 'btn-secondary'}`}
+                  className={`btn btn-sm ${selectedImageIndex === idx ? 'btn-primary' : 'btn-secondary'} ${img.is_reference ? 'has-reference' : ''}`}
                   onClick={() => setSelectedImageIndex(idx)}
+                  title={img.is_reference ? 'Approved reference / baseline photo' : ''}
                 >
-                  <Layers size={13} />
+                  {img.is_reference ? <Star size={13} fill="currentColor" /> : <Layers size={13} />}
                   <span>Photo {idx + 1} ({img.image_id})</span>
                 </button>
               ))}
+              {/* Toggle this photo as the cabinet's reference baseline. */}
+              {activeImage?.image_id && data?.cabinet_id && (
+                <button
+                  type="button"
+                  className={`btn btn-sm ${referenceImage?.image_id === activeImage.image_id ? 'btn-accent' : 'btn-secondary'}`}
+                  onClick={() => toggleReference(activeImage.image_id)}
+                  title={referenceImage?.image_id === activeImage.image_id
+                    ? 'This is the cabinet’s approved reference. Click to unmark.'
+                    : 'Mark this photo as the cabinet’s approved reference / baseline.'}
+                >
+                  <Star size={13} fill={referenceImage?.image_id === activeImage.image_id ? 'currentColor' : 'none'} />
+                  <span>{referenceImage?.image_id === activeImage.image_id ? 'Reference' : 'Mark as reference'}</span>
+                </button>
+              )}
             </div>
           )}
 

@@ -101,6 +101,18 @@ export const visualCompareImages = (candidateImageId, referenceImageId) =>
     `/api/images/${encodeURIComponent(candidateImageId)}/visual-compare?reference=${encodeURIComponent(referenceImageId)}`,
   );
 
+// Reference / baseline photo per cabinet (optional, used as the default compare target).
+export const getCabinetReferenceImage = (cabinetId) =>
+  request(`/api/cabinets/${encodeURIComponent(cabinetId)}/reference-image`);
+
+export const setCabinetReferenceImage = (cabinetId, imageId) =>
+  request(`/api/cabinets/${encodeURIComponent(cabinetId)}/reference-image/${encodeURIComponent(imageId)}`, {
+    method: 'POST',
+  });
+
+export const clearCabinetReferenceImage = (cabinetId) =>
+  request(`/api/cabinets/${encodeURIComponent(cabinetId)}/reference-image`, { method: 'DELETE' });
+
 // Inspections — backend takes photos directly (multipart) with the design_revision_id.
 export function createInspection(cabinetId, { designRevisionId, photos }) {
   const form = new FormData();

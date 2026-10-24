@@ -125,6 +125,9 @@ class Image(Base):
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     quality_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Approved baseline photo for its cabinet. At most one image per cabinet should carry this flag;
+    # the services layer enforces it atomically on write. Reference compare defaults to it.
+    is_reference: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
 
 
 class ImageAlignment(Base):

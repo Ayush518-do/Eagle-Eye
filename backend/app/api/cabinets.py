@@ -4,6 +4,7 @@ Every endpoint uses the request's session and commits explicitly after it has va
 stored everything; an error leaves nothing committed (the session is rolled back on close).
 """
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -149,6 +150,61 @@ def replace_expected_items(
 @router.get("/design-revisions/{revision_id}/expected-items", response_model=schemas.ExpectedItemsSubmission)
 def get_expected_items(revision_id: str, db: Session = Depends(get_db)) -> schemas.ExpectedItemsSubmission:
     return _expected_items_out(db, get_revision_or_404(db, revision_id))
+
+
+# extra: approved reference / baseline photo for a cabinet. At most one image per cabinet
+# carries the flag at a time; marking a new one atomically clears any previous reference.
+@router.get("/cabinets/{cabinet_id}/reference-image")
+def get_reference_image(cabinet_id: str, db: Session = Depends(get_db)) -> dict:
+    get_cabinet_or_404(db, cabinet_id)
+    row = db.scalars(
+        select(models.Image)
+        .join(models.Inspection, models.Image.inspection_id == models.Inspection.id)
+        .where(models.Inspection.cabinet_id == cabinet_id, models.Image.is_reference.is_(True))
+        .limit(1)
+    ).first()
+    if row is None:
+        return {"cabinet_id": cabinet_id, "reference_image_id": None}
+    return {"cabinet_id": cabinet_id, "reference_image_id": row.id,
+            "inspection_id": row.inspection_id, "sha256": row.sha256,
+            "width": row.width, "height": row.height}
+
+
+@router.post("/cabinets/{cabinet_id}/reference-image/{image_id}", status_code=201)
+def set_reference_image(cabinet_id: str, image_id: str, db: Session = Depends(get_db)) -> dict:
+    get_cabinet_or_404(db, cabinet_id)
+    image = db.get(models.Image, image_id)
+    if image is None:
+        raise HTTPException(404, "Image not found.")
+    inspection = db.get(models.Inspection, image.inspection_id)
+    if inspection is None or inspection.cabinet_id != cabinet_id:
+        raise HTTPException(409, "Image does not belong to this cabinet.")
+    # Clear every other image's flag in one UPDATE, then set this one. All in a single
+    # transaction so a crash can never leave two reference images for the same cabinet.
+    db.execute(
+        models.Image.__table__.update()
+        .where(models.Image.inspection_id.in_(
+            select(models.Inspection.id).where(models.Inspection.cabinet_id == cabinet_id)
+        ))
+        .values(is_reference=False)
+    )
+    image.is_reference = True
+    db.commit()
+    return {"cabinet_id": cabinet_id, "reference_image_id": image.id}
+
+
+@router.delete("/cabinets/{cabinet_id}/reference-image", status_code=204)
+def clear_reference_image(cabinet_id: str, db: Session = Depends(get_db)) -> Response:
+    get_cabinet_or_404(db, cabinet_id)
+    db.execute(
+        models.Image.__table__.update()
+        .where(models.Image.inspection_id.in_(
+            select(models.Inspection.id).where(models.Inspection.cabinet_id == cabinet_id)
+        ))
+        .values(is_reference=False)
+    )
+    db.commit()
+    return Response(status_code=204)
 
 
 # extra: parse the drawing PDF already stored for this revision, auto-populate expected items.

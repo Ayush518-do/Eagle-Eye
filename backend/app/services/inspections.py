@@ -101,6 +101,7 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
             quality_flags=i.quality_flags or [],
             alignment_set=alignment is not None,
             ghost=[schemas.GhostBox(**g) for g in ghost],
+            is_reference=bool(i.is_reference),
         ))
     finding_schemas: list[schemas.Finding] = []
     for f, current in rows:
