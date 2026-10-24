@@ -231,11 +231,10 @@ export default function Dashboard() {
             </p>
           </div>
           <Link
-            to={`/inspections/${syntheticData.inspection.inspection_id}`}
+            to="/inspect"
             className="btn btn-secondary btn-sm"
           >
-            <span>Open Synthetic Demo Run</span>
-            <ExternalLink size={12} />
+            <span>+ Inspect Cabinet</span>
           </Link>
         </div>
 

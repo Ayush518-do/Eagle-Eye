@@ -78,6 +78,11 @@ input, button, select, textarea {
   color: inherit;
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 code, pre, .mono, .tag-code {
   font-family: var(--font-mono);
 }
@@ -1275,17 +1280,41 @@ code, pre, .mono, .tag-code {
 
 @media (max-width: 640px) {
   .shell {
-    padding: 0 16px;
+    padding: 0 14px;
+  }
+  .topbar .shell {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .topbar .shell > div:first-child {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .nav-links {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
   }
   .metrics-grid {
     grid-template-columns: 1fr;
   }
   .page-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .site-footer .shell {
     flex-direction: column;
     text-align: center;
+    gap: 8px;
   }
 }
 
