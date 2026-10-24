@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.app import models, schemas
 from backend.app.ids import new_id
 from backend.app.pipeline.compare import compare, overall_status as engine_overall_status
+from backend.app.services import alignment as alignment_service
 from backend.app.services import status as status_rules
 from backend.app.services.expected_items import list_expected_items
 
@@ -25,8 +26,10 @@ def expected_item_schema(row: models.ExpectedItem) -> schemas.ExpectedItem:
     if row.rating_source is not None:
         rating = schemas.Rating(value=row.rating_value, source=row.rating_source,
                                 page=row.rating_page, needs_review=row.rating_needs_review)
+    layout = schemas.Layout(**row.layout) if row.layout else None
     return schemas.ExpectedItem(tag=row.tag, part_number=row.part_number, description=row.description,
-                                quantity=row.quantity, rating=rating, source_page=row.source_page)
+                                quantity=row.quantity, rating=rating, source_page=row.source_page,
+                                layout=layout)
 
 
 def observation_schema(row: models.Observation) -> schemas.Observation:
@@ -80,6 +83,44 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
     for _, current in rows:
         counts[current] = counts.get(current, 0) + 1
     revision = session.get(models.DesignRevision, inspection.design_revision_id)
+    images = images_of(session, inspection.id)
+    expected = list_expected_items(session, inspection.design_revision_id)
+    alignments: dict[str, models.ImageAlignment] = {
+        a.image_id: a for a in session.scalars(
+            select(models.ImageAlignment).where(models.ImageAlignment.image_id.in_([i.id for i in images])))
+    } if images else {}
+    # Status per tag: used for ghost-box status and for expected_bbox on missing findings.
+    status_by_tag = {f.tag: current for f, current in rows if f.tag}
+    expected_by_tag = {item.tag: item for item in expected}
+    image_infos: list[schemas.ImageInfo] = []
+    for i in images:
+        alignment = alignments.get(i.id)
+        ghost = alignment_service.ghost_boxes_for_image(alignment, expected, status_by_tag) if alignment else []
+        image_infos.append(schemas.ImageInfo(
+            image_id=i.id, url=f"/api/images/{i.id}", width=i.width, height=i.height,
+            quality_flags=i.quality_flags or [],
+            alignment_set=alignment is not None,
+            ghost=[schemas.GhostBox(**g) for g in ghost],
+        ))
+    finding_schemas: list[schemas.Finding] = []
+    for f, current in rows:
+        expected_bbox = None
+        if f.type == "missing" and f.tag and f.tag in expected_by_tag:
+            layout = expected_by_tag[f.tag].layout
+            if layout:
+                for a in alignments.values():
+                    if a.drawing_page == layout.get("page"):
+                        projected = alignment_service.project_bbox_drawing_to_photo(a, layout.get("bbox"))
+                        if projected:
+                            expected_bbox = projected
+                            break
+        finding_schemas.append(schemas.Finding(
+            finding_id=f.id, type=f.type, tag=f.tag, expected_value=f.expected_value,
+            observed_text=f.observed_text, detector_confidence=f.detector_confidence,
+            ocr_confidence=f.ocr_confidence, status=current, reason=f.reason,
+            evidence=[schemas.Evidence(**e) for e in f.evidence or []],
+            expected_bbox=expected_bbox,
+        ))
     return schemas.InspectionDetail(
         inspection_id=inspection.id,
         cabinet_id=inspection.cabinet_id,
@@ -91,13 +132,8 @@ def inspection_detail(session: Session, inspection: models.Inspection) -> schema
         overall_status=current_overall_status(session, inspection),
         state=inspection.state,
         error=inspection.error,
-        images=[schemas.ImageInfo(image_id=i.id, url=f"/api/images/{i.id}", width=i.width, height=i.height,
-                                  quality_flags=i.quality_flags or []) for i in images_of(session, inspection.id)],
-        findings=[schemas.Finding(
-            finding_id=f.id, type=f.type, tag=f.tag, expected_value=f.expected_value,
-            observed_text=f.observed_text, detector_confidence=f.detector_confidence,
-            ocr_confidence=f.ocr_confidence, status=current, reason=f.reason,
-            evidence=[schemas.Evidence(**e) for e in f.evidence or []]) for f, current in rows],
+        images=image_infos,
+        findings=finding_schemas,
         counts=counts,
     )
 

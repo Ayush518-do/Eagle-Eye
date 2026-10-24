@@ -42,6 +42,7 @@ def _row(revision_id: str, item: ExpectedItem) -> models.ExpectedItem:
         rating_source=rating.source if rating else None,
         rating_page=rating.page if rating else None,
         source_page=item.source_page,
+        layout=item.layout.model_dump() if item.layout else None,
     )
 
 

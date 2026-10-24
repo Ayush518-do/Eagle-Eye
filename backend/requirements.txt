@@ -5,3 +5,5 @@ python-multipart>=0.0.9,<1.0
 sqlalchemy>=2,<3
 alembic>=1.13,<2
 pillow>=10,<12
+pypdfium2>=4,<5                 # Apache-2.0 — render PDF pages for the ghost overlay
+opencv-python-headless>=4.9,<5  # Apache-2.0 — 4-point homography (optional; numpy fallback included)

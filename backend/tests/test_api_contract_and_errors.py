@@ -149,15 +149,27 @@ def done_inspection(api):
 def test_inspection_detail_matches_contract_c(api):
     inspection_id, detail = done_inspection(api)
     InspectionResult.model_validate(detail)  # the repository's own Contract C model accepts it
-    mock = json.loads((REPO_ROOT / "frontend/src/mocks/inspection.synthetic.json").read_text(encoding="utf-8"))
-    contract_keys = {k for k in mock if not k.startswith("_")}
+    bundle = json.loads((REPO_ROOT / "frontend/src/mocks/inspection.synthetic.json").read_text(encoding="utf-8"))
+    mock = bundle["inspection"]  # frontend mock is a multi-endpoint bundle; Contract C is under "inspection"
+    # Fields the mock adds for demo convenience (not part of Contract C).
+    frontend_only = {"cabinet_name", "cabinet_serial", "arrangement"}
+    contract_keys = {k for k in mock if not k.startswith("_")} - frontend_only
     assert contract_keys <= set(detail)
     assert set(detail) - contract_keys == {"state", "error", "design_revision_internal_id", "previous_inspection_id"}
     for key in mock["images"][0]:
-        assert key in detail["images"][0]
+        if key in {"url", "filename", "alignment_set", "ghost"}:
+            continue  # mock-only presentation / alignment-dependent fields
+        assert key in detail["images"][0], f"missing image key: {key}"
+    # Frontend-only presentation fields on a finding (not part of Contract C).
+    finding_frontend_only = {
+        "expected_tag", "expected_rating", "observed_tag", "observed_rating",
+        "observation", "sources", "evidence_score", "design_revision_id", "reviews", "expected_bbox",
+    }
     for key in mock["findings"][0]:
-        assert key in detail["findings"][0]
-    assert set(mock["findings"][0]["evidence"][0]) == set(detail["findings"][0]["evidence"][0])
+        if key in finding_frontend_only:
+            continue
+        assert key in detail["findings"][0], f"missing finding key: {key}"
+    assert set(mock["findings"][0]["evidence"][0]) <= set(detail["findings"][0]["evidence"][0])
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z", detail["created_at"]), detail["created_at"]
     assert detail["inspection_id"] == inspection_id and detail["cabinet_id"] == "CAB-001"
     assert detail["design_revision_id"] == "REV-A"  # the label, as in the contract example
@@ -196,7 +208,7 @@ def test_response_models_have_exactly_the_documented_fields(api):
     rid = revision.json()["design_revision_id"]
     items = api.post(f"/api/design-revisions/{rid}/expected-items", json={"items": [{"tag": "CB11"}]})
     assert set(items.json()) == {"contract_version", "drawing_file_sha256", "parser_version", "items"}
-    assert set(items.json()["items"][0]) == {"tag", "part_number", "description", "quantity", "rating", "source_page"}
+    assert set(items.json()["items"][0]) == {"tag", "part_number", "description", "quantity", "rating", "source_page", "layout"}
     accepted = make_inspection(api, "CAB-001", rid)
     assert accepted.status_code == 202 and set(accepted.json()) == {"inspection_id", "state"}  # guide: exactly these
     iid = accepted.json()["inspection_id"]

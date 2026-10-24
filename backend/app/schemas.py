@@ -33,6 +33,16 @@ class Rating(BaseModel):
     needs_review: bool = False
 
 
+class Layout(BaseModel):
+    """Where the tag sits on the drawing's general-arrangement page (Contract A, used by the ghost overlay)."""
+
+    page: int = Field(ge=1)
+    view: Optional[str] = None
+    bbox: BBox  # [x1, y1, x2, y2] in PDF points on `page`
+    anchor: Optional[Literal["component", "callout"]] = None
+    _bbox = field_validator("bbox")(_check_bbox)
+
+
 class ExpectedItem(BaseModel):
     tag: str
     part_number: Optional[str] = None
@@ -40,6 +50,7 @@ class ExpectedItem(BaseModel):
     quantity: int = 1
     rating: Optional[Rating] = None
     source_page: Optional[int] = None
+    layout: Optional[Layout] = None
 
 
 class DrawingParseResult(BaseModel):
@@ -121,6 +132,15 @@ class Finding(BaseModel):
     status: FindingStatus
     reason: Optional[str] = None
     evidence: list[Evidence] = []
+    # When a per-image alignment is set and the item's layout places it on that drawing page,
+    # the ghost overlay provides the projected box in photo pixels. Only set for `missing` findings.
+    expected_bbox: Optional[BBox] = None
+
+
+class GhostBox(BaseModel):
+    tag: Optional[str] = None
+    bbox: BBox
+    status: str
 
 
 class ImageInfo(BaseModel):
@@ -129,6 +149,23 @@ class ImageInfo(BaseModel):
     width: int
     height: int
     quality_flags: list[str] = []
+    alignment_set: bool = False
+    ghost: list[GhostBox] = []
+
+
+class AlignmentIn(BaseModel):
+    drawing_page: int = Field(ge=1)
+    drawing_points: list[list[float]]
+    photo_points: list[list[float]]
+
+
+class AlignmentOut(BaseModel):
+    image_id: str
+    drawing_page: int
+    drawing_points: list[list[float]]
+    photo_points: list[list[float]]
+    created_at: datetime
+    updated_at: datetime
 
 
 class InspectionResult(BaseModel):

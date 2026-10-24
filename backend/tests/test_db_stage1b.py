@@ -222,4 +222,4 @@ def test_alembic_cli_works_from_both_directories(tmp_path, from_backend):
         last = subprocess.run([sys.executable, "-m", "alembic", "-c", ini, *args], cwd=cwd, env=env,
                               capture_output=True, text=True, timeout=120)
         assert last.returncode == 0, last.stderr
-    assert "0004" in last.stdout + last.stderr
+    assert "0006" in last.stdout + last.stderr

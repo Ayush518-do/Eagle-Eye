@@ -53,7 +53,8 @@ async def upload_file(
 
 
 # The numbered endpoints from docs/team/backend.md live in their own modules.
-from backend.app.api import cabinets, inspections  # noqa: E402
+from backend.app.api import alignment, cabinets, inspections  # noqa: E402
 
 router.include_router(cabinets.router)
 router.include_router(inspections.router)
+router.include_router(alignment.router)

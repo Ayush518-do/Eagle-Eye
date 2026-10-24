@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Eagle Eye"
     app_env: str = "development"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'eagle_eye.db').as_posix()}"
     upload_dir: Path = BACKEND_DIR / "uploads"
     max_upload_mb: int = 20

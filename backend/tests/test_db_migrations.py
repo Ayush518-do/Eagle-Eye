@@ -13,10 +13,11 @@ from .conftest import alembic_config
 TABLES = {
     "cabinets", "design_revisions", "expected_items", "inspections",
     "images", "observations", "findings", "review_events",
+    "image_alignments",  # added in migration 0005 for the ghost overlay (Contract E)
 }
 
 
-def test_upgrade_creates_the_eight_documented_tables(migrated_db_url):
+def test_upgrade_creates_the_documented_tables(migrated_db_url):
     engine = make_engine(migrated_db_url)
     assert set(inspect(engine).get_table_names()) - {"alembic_version"} == TABLES
     engine.dispose()

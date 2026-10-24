@@ -296,6 +296,26 @@ With an alignment saved, the inspection result (section C) includes per image:
 **Ghost boxes are approximate hints.** The drawing isn't drawn exactly to scale and the photo is taken
 at an angle, so they never decide a finding on their own. They only show the reviewer where to look.
 
+### Frontend demo bundle
+
+`frontend/src/mocks/inspection.synthetic.json` is a **multi-endpoint bundle** used by the UI for its
+offline/demo mode, not a Contract C response. Its top-level keys are:
+
+| Key | Shape |
+|---|---|
+| `source` | the string `"synthetic"` — a stamp |
+| `_note` | human-readable note; ignored by the frontend |
+| `inspection` | Contract C object (what `GET /api/inspections/{id}` returns) |
+| `cabinets` | list of cabinet summaries (what `GET /api/cabinets` returns) |
+| `passport` | one Quality Passport (what `GET /api/cabinets/{id}/quality-passport` returns) |
+| `analytics` | analytics summary (what `GET /api/analytics` would return) |
+
+Within `inspection`, each finding carries a few frontend-only presentation fields that are not
+part of Contract C and that the backend does not emit: `expected_tag`, `expected_rating`,
+`observed_tag`, `observed_rating`, `observation`, `sources`, `evidence_score`,
+`design_revision_id` (per-finding), `reviews`. The frontend derives them from Contract C fields
+when live data is used. Keep this shape in sync when extending the mock.
+
 ---
 
 ## F. Backend endpoints around the contracts (implemented; shapes proposed, not yet agreed)

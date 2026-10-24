@@ -90,6 +90,10 @@ class ExpectedItem(Base):
     rating_source: Mapped[Optional[str]] = mapped_column(String(50))
     rating_page: Mapped[Optional[int]] = mapped_column(Integer)
     source_page: Mapped[Optional[int]] = mapped_column(Integer)
+    # Contract A `layout`: where the tag sits on the drawing's general-arrangement page.
+    # Nullable because hand-typed items and older parsers may not include it. Shape:
+    # {"page": int, "view": str|null, "bbox": [x1,y1,x2,y2] in PDF points, "anchor": "component"|"callout"|null}
+    layout: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
 class Inspection(Base):
@@ -121,6 +125,23 @@ class Image(Base):
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     quality_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class ImageAlignment(Base):
+    """Per-image 4-point homography between the drawing and the photo (Contract E).
+
+    One row per image at most. `drawing_points` are in PDF points on `drawing_page`; `photo_points`
+    are in original-photo pixels. Points are listed TL, TR, BR, BL. See docs/contracts.md section E.
+    """
+
+    __tablename__ = "image_alignments"
+
+    image_id: Mapped[str] = mapped_column(ForeignKey("images.id"), primary_key=True)
+    drawing_page: Mapped[int] = mapped_column(Integer)
+    drawing_points: Mapped[list[list[float]]] = mapped_column(JSON)
+    photo_points: Mapped[list[list[float]]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 class Observation(Base):
