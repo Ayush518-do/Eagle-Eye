@@ -29,6 +29,11 @@ export default function ImageWithBoxes({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
+  // Layer toggles (§2.3)
+  const [showTags, setShowTags] = useState(true);
+  const [showComponents, setShowComponents] = useState(true);
+  const [findingsOnly, setFindingsOnly] = useState(false);
+
   // Tooltip state
   const [hoveredBox, setHoveredBox] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -180,6 +185,35 @@ export default function ImageWithBoxes({
           </button>
         </div>
 
+        {/* Layer Toggles (§2.3) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 600 }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>Layers:</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showTags}
+              onChange={(e) => setShowTags(e.target.checked)}
+            />
+            <span>Tags</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showComponents}
+              onChange={(e) => setShowComponents(e.target.checked)}
+            />
+            <span>Components</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={findingsOnly}
+              onChange={(e) => setFindingsOnly(e.target.checked)}
+            />
+            <span>Findings only</span>
+          </label>
+        </div>
+
         {/* Component Legend */}
         <div className="viewer-legend">
           <span className="legend-item">
@@ -266,62 +300,71 @@ export default function ImageWithBoxes({
             width={viewBoxWidth}
             height={viewBoxHeight}
           >
-            {boxes.map((box) => {
-              const [x1, y1, x2, y2] = box.bbox;
-              const w = Math.max(x2 - x1, 10);
-              const h = Math.max(y2 - y1, 10);
-              const isSelected = highlightedId === box.id;
-              const isDimmed = highlightedId !== null && !isSelected;
-              const strokeColor = getBoxColor(box);
+            {boxes
+              .filter((box) => !findingsOnly || (box.status !== 'verified' && box.status !== 'pass'))
+              .map((box) => {
+                const [x1, y1, x2, y2] = box.bbox;
+                const w = Math.max(x2 - x1, 10);
+                const h = Math.max(y2 - y1, 10);
+                const isSelected = highlightedId === box.id;
+                const isDimmed = highlightedId !== null && !isSelected;
+                const strokeColor = getBoxColor(box);
 
-              return (
-                <g
-                  key={box.id}
-                  className={`svg-box-group ${isSelected ? 'selected' : ''} ${isDimmed ? 'dimmed' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onBoxClick) onBoxClick(box.id);
-                  }}
-                  onMouseEnter={(e) => handleBoxMouseEnter(box, e)}
-                  onMouseMove={handleBoxMouseMove}
-                  onMouseLeave={handleBoxMouseLeave}
-                >
-                  {/* Bounding Box Rectangle */}
-                  <rect
-                    x={x1}
-                    y={y1}
-                    width={w}
-                    height={h}
-                    className="svg-box-rect"
-                    stroke={strokeColor}
-                    rx="3"
-                    ry="3"
-                  />
-                  {/* Tag Label Badge Header */}
-                  <rect
-                    x={x1}
-                    y={Math.max(y1 - 22, 2)}
-                    width={Math.min(Math.max((box.label || '').length * 9 + 16, 50), w + 20)}
-                    height="20"
-                    fill={strokeColor}
-                    rx="2"
-                    ry="2"
-                    className="svg-box-label-bg"
-                  />
-                  <text
-                    x={x1 + 6}
-                    y={Math.max(y1 - 8, 16)}
-                    className="svg-box-label"
+                return (
+                  <g
+                    key={box.id}
+                    className={`svg-box-group ${isSelected ? 'selected' : ''} ${isDimmed ? 'dimmed' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onBoxClick) onBoxClick(box.id);
+                    }}
+                    onMouseEnter={(e) => handleBoxMouseEnter(box, e)}
+                    onMouseMove={handleBoxMouseMove}
+                    onMouseLeave={handleBoxMouseLeave}
                   >
-                    {box.label || box.id}
-                  </text>
-                </g>
-              );
-            })}
+                    {/* Bounding Box Rectangle (Component Layer) */}
+                    {showComponents && (
+                      <rect
+                        x={x1}
+                        y={y1}
+                        width={w}
+                        height={h}
+                        className="svg-box-rect"
+                        stroke={strokeColor}
+                        rx="3"
+                        ry="3"
+                      />
+                    )}
+
+                    {/* Tag Label Badge Header (Tag Layer) */}
+                    {showTags && (
+                      <>
+                        <rect
+                          x={x1}
+                          y={Math.max(y1 - 22, 2)}
+                          width={Math.min(Math.max((box.label || '').length * 9 + 16, 50), w + 20)}
+                          height="20"
+                          fill={strokeColor}
+                          rx="2"
+                          ry="2"
+                          className="svg-box-label-bg"
+                        />
+                        <text
+                          x={x1 + 6}
+                          y={Math.max(y1 - 8, 16)}
+                          className="svg-box-label"
+                        >
+                          {box.label || box.id}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                );
+              })}
           </svg>
         </div>
 
-        {/* Hover Tooltip */}
+        {/* Hover Tooltip (§2.3) */}
         {hoveredBox && (
           <div
             className="viewer-tooltip"
@@ -336,6 +379,16 @@ export default function ImageWithBoxes({
             <div className="viewer-tooltip-meta">
               Class: <strong>{hoveredBox.className || hoveredBox.class_name || 'Component'}</strong>
             </div>
+            {hoveredBox.status && (
+              <div className="viewer-tooltip-meta">
+                Status: <strong style={{ textTransform: 'capitalize' }}>{hoveredBox.status.replace(/_/g, ' ')}</strong>
+              </div>
+            )}
+            {hoveredBox.sources && hoveredBox.sources.length > 0 && (
+              <div className="viewer-tooltip-meta">
+                Sources: <strong>{hoveredBox.sources.join(', ')}</strong>
+              </div>
+            )}
             {hoveredBox.confidence != null && (
               <div className="viewer-tooltip-meta">
                 Detector Conf: <strong>{(hoveredBox.confidence * 100).toFixed(1)}%</strong>

@@ -142,6 +142,8 @@ export default function Results() {
           bbox,
           label: f.observed_tag || f.expected_tag || f.tag || f.finding_id,
           className,
+          status: f.status,
+          sources: f.sources,
           confidence: f.observation?.detector_confidence ?? f.detector_confidence,
           ocr_confidence: f.observation?.ocr_confidence ?? f.ocr_confidence,
         });
