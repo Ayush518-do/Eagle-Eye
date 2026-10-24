@@ -94,6 +94,13 @@ export const parseDrawingForRevision = (revisionId) =>
     method: 'POST',
   });
 
+// Visual compare: SIFT + homography + per-pixel diff between an approved REFERENCE photo
+// and the current CANDIDATE photo. Returns regions-of-change in candidate pixel coordinates.
+export const visualCompareImages = (candidateImageId, referenceImageId) =>
+  request(
+    `/api/images/${encodeURIComponent(candidateImageId)}/visual-compare?reference=${encodeURIComponent(referenceImageId)}`,
+  );
+
 // Inspections — backend takes photos directly (multipart) with the design_revision_id.
 export function createInspection(cabinetId, { designRevisionId, photos }) {
   const form = new FormData();

@@ -21,6 +21,7 @@ from backend.app.config import Settings, get_settings
 from backend.app.db import get_db
 from backend.app.services import alignment as alignment_service
 from backend.app.services import inspections as inspection_service
+from backend.app.services import visual_compare as visual_compare_service
 from backend.app.services.storage import find_upload
 
 router = APIRouter(tags=["alignment"])
@@ -118,6 +119,42 @@ def drawing_page_png(
         media_type="image/png",
         headers={"X-Page-Size": f"{w_pts:.0f}x{h_pts:.0f}"},
     )
+
+
+# ---------- Visual compare: reference-vs-candidate change regions ----------
+@router.get("/images/{candidate_image_id}/visual-compare")
+def visual_compare(
+    candidate_image_id: str,
+    reference: str,  # the OTHER image id to compare against (query param: ?reference=IMG-...)
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Run SIFT + homography diff between an approved REFERENCE photo and this candidate.
+
+    Returns the regions-of-change as bboxes in the CANDIDATE's original pixel space, each
+    with an area fraction and a change_score in [0, 1]. Reviewers can overlay these on
+    the candidate photo as a "Change regions" layer.
+    """
+    cand = db.get(models.Image, candidate_image_id)
+    ref = db.get(models.Image, reference)
+    if cand is None or ref is None:
+        raise HTTPException(404, "One of the images was not found.")
+    cand_found = find_upload(settings.upload_dir, cand.file_id)
+    ref_found = find_upload(settings.upload_dir, ref.file_id)
+    if cand_found is None or ref_found is None:
+        raise HTTPException(404, "One of the image files is missing on disk.")
+    try:
+        from pathlib import Path as _Path
+        result = visual_compare_service.compare_images(_Path(ref_found[0]), _Path(cand_found[0]))
+    except ImportError as exc:
+        raise HTTPException(503, f"Visual compare unavailable: {exc!s}") from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(422, f"Compare failed: {exc!s}") from exc
+    return {
+        "candidate_image_id": candidate_image_id,
+        "reference_image_id": reference,
+        **result,
+    }
 
 
 # ---------- Export: CSV ----------

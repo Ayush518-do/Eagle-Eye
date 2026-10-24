@@ -8,6 +8,7 @@ const CLASS_COLORS = {
   psu: '#1f5eff',
   io_module: '#1a7f37',    // I/O Module: Forest Green
   io: '#1a7f37',
+  change_region: '#8250df',// Visual-compare change region: Purple
   default: '#f0a500',      // Default / Other: Amber
 };
 

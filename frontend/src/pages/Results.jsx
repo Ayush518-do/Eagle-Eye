@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Download,
   FileText,
+  Crosshair,
 } from 'lucide-react';
 import {
   API_URL,
@@ -27,6 +28,7 @@ import {
   downloadFindingsCsv,
   deleteAlignment,
   getDrawingPageUrl,
+  visualCompareImages,
 } from '../api.js';
 import ImageWithBoxes from '../components/ImageWithBoxes.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -61,6 +63,11 @@ export default function Results() {
   const [isReinspectModalOpen, setIsReinspectModalOpen] = useState(false);
   const [isAlignmentModalOpen, setIsAlignmentModalOpen] = useState(false);
   const [reinspectNotes, setReinspectNotes] = useState('');
+
+  // Visual compare state — per candidate image, store its latest change-region result.
+  const [compareReferenceId, setCompareReferenceId] = useState('');
+  const [compareResultByImage, setCompareResultByImage] = useState({}); // image_id -> {regions, diagnostic, sift_matches}
+  const [isComparing, setIsComparing] = useState(false);
 
   // Load Inspection Data
   const loadInspection = async () => {
@@ -158,8 +165,23 @@ export default function Results() {
         });
       }
     }
+    // Append visual-compare change regions (if any) for the active image.
+    const compare = compareResultByImage[activeImage.image_id];
+    if (compare?.diagnostic === 'ok' && compare.regions?.length) {
+      compare.regions.forEach((reg, i) => {
+        list.push({
+          id: `CHG-${activeImage.image_id}-${i}`,
+          bbox: reg.bbox,
+          label: `CHG ${(reg.change_score * 100).toFixed(0)}%`,
+          className: 'change_region',
+          status: 'needs_review',
+          sources: ['visual_compare'],
+          confidence: reg.change_score,
+        });
+      });
+    }
     return list;
-  }, [findings, activeImage, data]);
+  }, [findings, activeImage, data, compareResultByImage]);
 
   // Missing components expected positions (§3.4, contract E)
   const missingExpectedBoxes = useMemo(() => {
@@ -486,6 +508,76 @@ export default function Results() {
                   <span>Photo {idx + 1} ({img.image_id})</span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Visual compare: pick an approved REFERENCE photo and overlay change regions. */}
+          {data?.images && data.images.length > 1 && (
+            <div className="compare-bar" aria-label="Visual reference compare">
+              <span className="compare-bar-label">
+                <Crosshair size={13} /> Reference compare:
+              </span>
+              <select
+                className="filter-select"
+                value={compareReferenceId}
+                onChange={(e) => setCompareReferenceId(e.target.value)}
+                aria-label="Pick an approved reference photo"
+              >
+                <option value="">— choose approved photo —</option>
+                {data.images
+                  .filter((img) => img.image_id !== activeImage.image_id)
+                  .map((img, idx) => (
+                    <option key={img.image_id} value={img.image_id}>
+                      Photo {data.images.indexOf(img) + 1} ({img.image_id})
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!compareReferenceId || isComparing}
+                onClick={async () => {
+                  setIsComparing(true);
+                  try {
+                    const res = await visualCompareImages(activeImage.image_id, compareReferenceId);
+                    setCompareResultByImage((prev) => ({ ...prev, [activeImage.image_id]: res }));
+                  } catch (err) {
+                    setCompareResultByImage((prev) => ({
+                      ...prev,
+                      [activeImage.image_id]: { regions: [], diagnostic: 'error', error: err.message },
+                    }));
+                  } finally {
+                    setIsComparing(false);
+                  }
+                }}
+              >
+                {isComparing ? 'Comparing…' : 'Run compare'}
+              </button>
+              {compareResultByImage[activeImage.image_id] && (
+                <>
+                  <span className="compare-bar-meta">
+                    {compareResultByImage[activeImage.image_id].diagnostic === 'ok' &&
+                      `${compareResultByImage[activeImage.image_id].regions.length} change region(s), ${compareResultByImage[activeImage.image_id].sift_matches} SIFT matches`}
+                    {compareResultByImage[activeImage.image_id].diagnostic === 'no_differences' &&
+                      `No change regions — matches the reference (${compareResultByImage[activeImage.image_id].sift_matches} SIFT matches)`}
+                    {compareResultByImage[activeImage.image_id].diagnostic === 'poor_alignment' &&
+                      `Poor alignment (${compareResultByImage[activeImage.image_id].sift_matches} SIFT matches) — pick a photo taken from the same angle`}
+                    {compareResultByImage[activeImage.image_id].diagnostic === 'error' &&
+                      `Error: ${compareResultByImage[activeImage.image_id].error}`}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setCompareResultByImage((prev) => {
+                      const next = { ...prev };
+                      delete next[activeImage.image_id];
+                      return next;
+                    })}
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
             </div>
           )}
 
