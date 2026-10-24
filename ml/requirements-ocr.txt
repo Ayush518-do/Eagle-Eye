@@ -1,0 +1,6 @@
+# Part 2: drawing parser and tag reading
+pdfplumber>=0.11,<1.0
+rapidocr-onnxruntime>=1.2,<2.0
+pillow>=10,<12
+pytest>=8,<9
+reportlab>=4,<6        # tests only: builds a small PDF
