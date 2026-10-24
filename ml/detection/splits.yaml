@@ -1,17 +1,20 @@
-# Which company photo goes into which split. Split by CABINET, never by tile:
-# tiles of one photo must never appear in two splits, or the test score is meaningless.
+# Company photos are NEVER used for training. They are split into:
 #
-# Cabinet 2 (3 columns, no drawing) is the only photo of a cabinet the model never sees in training,
-# so it is the test set. It only contains io_module parts, which means:
-#   -> io_module gets an honest test score;
-#   -> power_supply and mcb have NO clean test on company data. Say so when reporting results.
-# valid is used only to pick the best training round (early stopping). It is another photo of
-# cabinet 1, so its scores are optimistic. Never report them as accuracy.
-train:
-  - cab1_full_front
+#   dev:  photos you MAY look at while choosing OWLv2 prompts and thresholds (tuning).
+#   test: photos you must NOT tune on. The final scores come from these only.
+#
+# Why two groups: if you change prompts until the boxes look good on a photo, that photo
+# no longer gives an honest score. Keep the test photos for the final measurement.
+# All three classes (power_supply, mcb, io_module) appear in the test photos.
+#
+# The detector is trained on public datasets only (see public_class_map.yaml), so train/valid
+# stay empty here: build_dataset.py fills them from data/external/.
+train: []
+valid: []
+dev:
   - cab1_power_supplies_closeup
   - cab1_breakers_CB11-CB16_closeup
-valid:
-  - cab1_lower_front_io
 test:
+  - cab1_full_front
+  - cab1_lower_front_io
   - cab2_full_front_3_columns

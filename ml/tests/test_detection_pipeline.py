@@ -46,9 +46,10 @@ def test_label_studio_round_trip():
 
 
 def test_classes_file():
-    names = [c["name"] for c in B.load_classes()]
-    assert names == ["power_supply", "mcb", "io_module"]
-    assert all(c["prompts"] for c in B.load_classes())
+    classes = B.load_classes()
+    assert [c["name"] for c in classes] == ["power_supply", "mcb", "io_module"]
+    assert all(c["prompts"] for c in classes)                      # OWLv2 can look for every class
+    assert [c["name"] for c in classes if c["detector"]] == ["mcb"]  # only mcb has public training data
 
 
 # ------------------------------------------------------------- import labels
@@ -70,53 +71,73 @@ def test_import_label_studio_export(tmp_path):
 
 
 # ------------------------------------------------------------- build dataset (end to end)
-def test_build_dataset_end_to_end(tmp_path):
-    photos = tmp_path / "photos"; photos.mkdir()
-    for n in ("cab1_full_front", "cab1_lower_front_io", "cab2_full_front_3_columns"):
-        _photo(photos / f"{n}.jpg", size=(3000, 2000))
-    coco = B.coco_skeleton(B.load_classes())
-    for i, n in enumerate(("cab1_full_front", "cab1_lower_front_io", "cab2_full_front_3_columns"), start=1):
-        coco["images"].append({"id": i, "file_name": f"{n}.jpg", "width": 3000, "height": 2000})
-        coco["annotations"].append({"id": i, "image_id": i, "category_id": 3 if i > 1 else 1,
-                                    "bbox": [200, 200, 300, 400], "area": 120000, "iscrowd": 0})
-    B.save_json(coco, tmp_path / "labels.json")
-    (tmp_path / "splits.yaml").write_text(
-        "train: [cab1_full_front]\nvalid: [cab1_lower_front_io]\ntest: [cab2_full_front_3_columns]\n")
-    # a public dataset whose class names are spelled differently, with test images that must be ignored
+def _public(root, name, cls_name, sizes=(640, 640)):
     for split in ("train", "valid", "test"):
-        d = tmp_path / "external" / "breakers" / split; d.mkdir(parents=True)
-        _photo(d / "p1.jpg", size=(640, 640))
-        B.save_json({"images": [{"id": 1, "file_name": "p1.jpg", "width": 640, "height": 640}],
-                     "categories": [{"id": 0, "name": "breakers", "supercategory": "none"},
-                                    {"id": 1, "name": "2-Pole-Circuit-Breaker", "supercategory": "breakers"}],
+        d = root / name / split; d.mkdir(parents=True)
+        _photo(d / "p1.jpg", size=sizes)
+        B.save_json({"images": [{"id": 1, "file_name": "p1.jpg", "width": sizes[0], "height": sizes[1]}],
+                     "categories": [{"id": 0, "name": "root", "supercategory": "none"},
+                                    {"id": 1, "name": cls_name, "supercategory": "root"}],
                      "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 50, 100]}]},
                     d / "_annotations.coco.json")
-    (tmp_path / "map.yaml").write_text("breakers:\n  2 pole circuit breaker: mcb\n")
+
+
+def _run_build(tmp_path, splits_text, with_public=True):
+    photos = tmp_path / "photos"; photos.mkdir(exist_ok=True)
+    names = ("cab1_full_front", "cab1_power_supplies_closeup", "cab2_full_front_3_columns")
+    coco = B.coco_skeleton(B.load_classes())
+    for i, n in enumerate(names, start=1):
+        _photo(photos / f"{n}.jpg", size=(3000, 2000))
+        coco["images"].append({"id": i, "file_name": f"{n}.jpg", "width": 3000, "height": 2000})
+        for j, cat in enumerate((1, 2, 3)):                         # one part of every class per photo
+            coco["annotations"].append({"id": 10 * i + j, "image_id": i, "category_id": cat,
+                                        "bbox": [200 + 400 * j, 200, 300, 400], "area": 1, "iscrowd": 0})
+    B.save_json(coco, tmp_path / "labels.json")
+    (tmp_path / "splits.yaml").write_text(splits_text)
+    if with_public and not (tmp_path / "external").exists():
+        _public(tmp_path / "external", "breakers", "2-Pole-Circuit-Breaker")
+        (tmp_path / "map.yaml").write_text("breakers:\n  2 pole circuit breaker: mcb\n")
     out = tmp_path / "ds"
-    r = subprocess.run([sys.executable, "-m", "ml.detection.build_dataset", "--labels", str(tmp_path / "labels.json"),
-                        "--photos", str(photos), "--splits", str(tmp_path / "splits.yaml"), "--out", str(out),
-                        "--public-dir", str(tmp_path / "external"), "--public-map", str(tmp_path / "map.yaml")],
-                       cwd=ROOT, capture_output=True, text=True)
+    cmd = [sys.executable, "-m", "ml.detection.build_dataset", "--labels", str(tmp_path / "labels.json"),
+           "--photos", str(photos), "--splits", str(tmp_path / "splits.yaml"), "--out", str(out),
+           "--public-dir", str(tmp_path / "external")]
+    if with_public:
+        cmd += ["--public-map", str(tmp_path / "map.yaml")]
+    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True), out
+
+
+SPLITS = ("train: []\nvalid: []\ndev: [cab1_power_supplies_closeup]\n"
+          "test: [cab1_full_front, cab2_full_front_3_columns]\n")
+
+
+def test_public_trains_company_tests(tmp_path):
+    r, out = _run_build(tmp_path, SPLITS)
     assert r.returncode == 0, r.stderr + r.stdout
     info = json.loads((out / "dataset_info.json").read_text())
-    assert info["train"]["boxes_per_class"]["power_supply"] >= 1
-    assert info["train"]["boxes_per_class"]["mcb"] == 1                     # public, mapped despite spelling
-    assert "public:breakers" not in info["test"]["sources"]                 # public never in test
-    assert info["test_full"]["images"] == 1
+    # training data: public only, and only the detector class (mcb)
+    assert info["train"]["sources"] == {"public:breakers": 1}
+    assert info["train"]["boxes_per_class"] == {"mcb": 1}
+    assert [c["name"] for c in B.load_json(out / "train" / "_annotations.coco.json")["categories"]] == ["mcb"]
+    # test: company photos only, all three classes kept as the answer key
+    assert info["test_full"]["images"] == 2 and info["test_full"]["sources"] == {"company": 2}
+    assert info["test_full"]["boxes_per_class"] == {"power_supply": 2, "mcb": 2, "io_module": 2}
+    assert "public:breakers" not in info["test"]["sources"]
+    assert info["dev_full"]["images"] == 1
+    # no company photo leaks into training
     train_names = {i["file_name"] for i in B.load_json(out / "train" / "_annotations.coco.json")["images"]}
-    assert not any("cab2" in n or "lower_front" in n for n in train_names)  # no leakage between splits
-    for split in ("train", "valid", "test"):
-        c = B.load_json(out / split / "_annotations.coco.json")
-        for im in c["images"]:
+    assert not any(n.startswith("co-") for n in train_names)
+    for split in ("train", "valid", "test", "test_full", "dev_full"):
+        for im in B.load_json(out / split / "_annotations.coco.json")["images"]:
             assert (out / split / im["file_name"]).exists()
 
 
+def test_build_fails_clearly_without_public_data(tmp_path):
+    r, _ = _run_build(tmp_path, SPLITS, with_public=False)
+    assert r.returncode != 0 and "public datasets" in (r.stderr + r.stdout)
+
+
 def test_build_dataset_rejects_photo_in_two_splits(tmp_path):
-    (tmp_path / "splits.yaml").write_text("train: [a]\nvalid: [a]\n")
-    B.save_json(B.coco_skeleton(B.load_classes()), tmp_path / "l.json")
-    r = subprocess.run([sys.executable, "-m", "ml.detection.build_dataset", "--labels", str(tmp_path / "l.json"),
-                        "--photos", str(tmp_path), "--splits", str(tmp_path / "splits.yaml"), "--out", str(tmp_path / "o")],
-                       cwd=ROOT, capture_output=True, text=True)
+    r, _ = _run_build(tmp_path, "dev: [cab1_full_front]\ntest: [cab1_full_front]\n")
     assert r.returncode != 0 and "two splits" in (r.stderr + r.stdout)
 
 
@@ -143,7 +164,7 @@ def test_score_reports_no_test_data_instead_of_a_number():
     coco = {"categories": [{"id": 1, "name": "power_supply"}, {"id": 3, "name": "io_module"}],
             "images": [{"id": 1, "file_name": "a.jpg"}],
             "annotations": [{"image_id": 1, "category_id": 3, "bbox": [0, 0, 100, 100]}]}
-    preds = {"a.jpg": [{"bbox": [0, 0, 100, 100], "score": 0.9, "class_name": "io_module"},
+    preds = {"a": [{"bbox": [0, 0, 100, 100], "score": 0.9, "class_name": "io_module"},
                        {"bbox": [500, 500, 600, 600], "score": 0.8, "class_name": "power_supply"}]}
     r = score(preds, coco, threshold=0.3)
     assert r["io_module"] == {"truth_boxes": 1, "precision": 1.0, "recall": 1.0, "AP50": 1.0}
@@ -152,10 +173,33 @@ def test_score_reports_no_test_data_instead_of_a_number():
     assert match([{"bbox": [0, 0, 10, 10], "score": 1}], [[50, 50, 60, 60]]) == [(1, False)]
 
 
+def test_evaluate_per_source_and_combined(tmp_path):
+    from ml.detection.evaluate import evaluate
+    from ml.interfaces import detections_to_contract
+    truth = tmp_path / "test_full"; truth.mkdir()
+    _photo(truth / "a.jpg", size=(1000, 800))
+    B.save_json({"categories": [{"id": 1, "name": "power_supply"}, {"id": 2, "name": "mcb"}],
+                 "images": [{"id": 1, "file_name": "a.jpg"}],
+                 "annotations": [{"image_id": 1, "category_id": 1, "bbox": [0, 0, 100, 100]},
+                                 {"image_id": 1, "category_id": 2, "bbox": [500, 500, 50, 100]}]},
+                truth / "_annotations.coco.json")
+    preds = tmp_path / "preds"
+    # the trained detector finds only the breaker; OWLv2 finds only the power supply (low score)
+    B.save_json(detections_to_contract(truth / "a.jpg", [{"bbox": [500, 500, 550, 600], "score": 0.9, "class_name": "mcb"}],
+                                       "rf", source="detector"), preds / "detector" / "a.json")
+    B.save_json(detections_to_contract(truth / "a.jpg", [{"bbox": [0, 0, 100, 100], "score": 0.2, "class_name": "power_supply"}],
+                                       "owl", source="zero_shot"), preds / "zero_shot" / "a.json")
+    r = evaluate(truth, preds, {"detector": 0.3, "zero_shot": 0.15})["results"]
+    assert r["detector"]["mcb"]["recall"] == 1.0 and r["detector"]["power_supply"]["recall"] == 0.0
+    assert r["zero_shot"]["power_supply"]["recall"] == 1.0          # 0.2 passes OWLv2's own threshold
+    assert r["combined"]["mcb"]["recall"] == 1.0 and r["combined"]["power_supply"]["recall"] == 1.0
+
+
 # ------------------------------------------------------------- interface
 def test_detect_components_refuses_without_weights(monkeypatch):
     from ml.interfaces import ModelUnavailableError, detect_components
     monkeypatch.delenv("DETECTOR_WEIGHTS_PATH", raising=False)
+    monkeypatch.delenv("ZERO_SHOT_ENABLED", raising=False)
     with pytest.raises(ModelUnavailableError, match="DETECTOR_WEIGHTS_PATH"):
         detect_components("x.jpg")
     monkeypatch.setenv("DETECTOR_WEIGHTS_PATH", "missing.pth")

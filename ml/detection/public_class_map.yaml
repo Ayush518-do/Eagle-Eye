@@ -1,32 +1,38 @@
-# Public datasets to merge into TRAIN and VALID only (never test).
+# Public datasets that TRAIN the detector (train/valid only, never test).
 # Download each from Roboflow Universe as "COCO" format and unzip into data/external/<folder name>/
 # (folder name = the key below). Each must contain train/ and valid/ with _annotations.coco.json.
+# A folder that isn't there is skipped with a warning, so start with one or two.
 #
-# Map: <their class name>: <our class name>, or null to ignore that class.
-# Only images containing at least one mapped class are used.
+# Map: <their class name>: <our class name>. Classes not listed are ignored (a warning lists them).
+# Spelling differences ("2-Pole-Circuit-Breaker" vs "2 pole circuit breaker") are handled.
 #
-# Licences: both CC BY 4.0 -> credit them in ml/detection/README.md ("Credits") if used.
-#   audit-panel:              https://universe.roboflow.com/parking-detection-nfmxg/audit-panel
-#   circuitbreakerdetection:  https://universe.roboflow.com/mahmoud-wali/circuitbreakerdetection
-# Check a few images of each by eye before training: if their "circuit breaker" boxes look different
-# from our DIN-rail breakers (e.g. whole panels), set them to null.
+# All four are CC BY 4.0: credit the ones you use (README "Credits").
+# BEFORE training, look at ~10 images of each. Keep a dataset only if its breakers look like ours
+# (DIN-rail breakers, boxed one device per box). Delete its block below if not.
 
+# 1. Panel photos with breakers (closest to our photos)
+#    https://universe.roboflow.com/parking-detection-nfmxg/audit-panel
 audit-panel:
   circuit breaker: mcb
-  panel: null
-  ampere rating: null
-  breaker label number: null
-  switch-on: null
-  switch-off: null
-  black connected wire L1: null
-  red connected wire L2: null
-  blue connected wire L3: null
-  wire holder L1: null
-  wire holder L2: null
-  wire holder L3: null
 
+# 2. Breakers by number of poles
+#    https://universe.roboflow.com/mahmoud-wali/circuitbreakerdetection
 circuitbreakerdetection:
   1 Pole Circuit Breaker: mcb
   2 Pole Circuit Breaker: mcb
   3 Pole Circuit Breaker: mcb
   4 pole circuit breaker: mcb
+
+# 3. Distribution boards (mostly household), several breaker types
+#    https://universe.roboflow.com/control-panel-azure/control-panels
+control-panels:
+  circuit breaker 1-pole: mcb
+  circuit breaker 2-pole: mcb
+  circuit breaker 3-pole: mcb
+  circuit breaker 3-pole 32A: mcb
+  RCBO 1-pole: mcb
+
+# 4. Mixed electrical equipment (check carefully: some images may be diagrams)
+#    https://universe.roboflow.com/vit-atwcp/electrical-devices
+electrical-devices:
+  MCB: mcb

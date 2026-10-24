@@ -1,6 +1,6 @@
 """Step 5: fine-tune RF-DETR on the dataset from build_dataset.py (on the RTX 4050).
 
-    python -m ml.detection.train_rfdetr --dataset data/private/rfdetr_dataset --out runs/rfdetr-small-v1
+    python -m ml.detection.train_rfdetr --dataset data/private/rfdetr_dataset --out runs/rfdetr-mcb-v1
 
 "Fine-tune" = start from a model already trained on everyday objects (COCO) and continue training it
 on our parts. That needs far less data than training from scratch.
@@ -65,7 +65,7 @@ def main() -> None:
     (a.out / "train_record.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
     print(json.dumps(record, indent=2))
     print(f"\nBest weights: {a.out / 'checkpoint_best_total.pth'}")
-    print("Next: python -m ml.detection.evaluate (README step 6). Validation numbers above are NOT test results.")
+    print("Next: README steps 6-7 (predict_all + evaluate on the company test photos). Validation numbers are from public images, NOT our cabinets.")
 
 
 if __name__ == "__main__":   # required on Windows: training starts worker processes

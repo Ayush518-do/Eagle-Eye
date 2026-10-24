@@ -65,25 +65,49 @@ def _load_detector(weights: str, size: str, threshold: float):
     return RFDETRDetector(weights, size, threshold)
 
 
-def detect_components(image_path: str) -> dict:
-    """Cabinet photo -> contract B with kind='component', using the trained RF-DETR model.
+@lru_cache(maxsize=1)
+def _load_zero_shot(threshold: float):
+    from ml.detection.zero_shot import OWLv2Detector
+    return OWLv2Detector(threshold=threshold)
 
-    Configure in .env:  DETECTOR_WEIGHTS_PATH=runs/rfdetr-small-v1/checkpoint_best_total.pth
-                        DETECTOR_MODEL_SIZE=small   DETECTOR_THRESHOLD=0.3
+
+def detect_components(image_path: str) -> dict:
+    """Cabinet photo -> contract B with kind='component', from every configured source:
+
+      source "detector"   RF-DETR fine-tuned on public data (mcb)      .env: DETECTOR_WEIGHTS_PATH=...
+      source "zero_shot"  OWLv2, pretrained, from text prompts (all)   .env: ZERO_SHOT_ENABLED=true
+
+    Optional: DETECTOR_MODEL_SIZE=small, DETECTOR_THRESHOLD=0.3, ZERO_SHOT_THRESHOLD=0.15.
+    Each observation keeps its own source; the engine merges them (evidence fusion).
     """
+    from PIL import Image
     weights = os.environ.get("DETECTOR_WEIGHTS_PATH", "")
-    if not weights:
-        raise ModelUnavailableError("DETECTOR_WEIGHTS_PATH is not set: no trained detector configured.")
-    if not Path(weights).is_file():
+    zero_shot = os.environ.get("ZERO_SHOT_ENABLED", "").lower() in {"1", "true", "yes"}
+    if not weights and not zero_shot:
+        raise ModelUnavailableError(
+            "No detector configured: set DETECTOR_WEIGHTS_PATH and/or ZERO_SHOT_ENABLED=true.")
+    if weights and not Path(weights).is_file():
         raise ModelUnavailableError(f"Detector weights not found: {weights}")
+
+    image = Image.open(image_path).convert("RGB")
+    size = os.environ.get("DETECTOR_MODEL_SIZE", "small")
+    result = None
     try:
-        det = _load_detector(weights, os.environ.get("DETECTOR_MODEL_SIZE", "small"),
-                             float(os.environ.get("DETECTOR_THRESHOLD", "0.3")))
+        if weights:
+            det = _load_detector(weights, size, float(os.environ.get("DETECTOR_THRESHOLD", "0.3")))
+            result = detections_to_contract(image_path, det.predict(image), f"rf-detr-{size}", weights, "detector")
+        if zero_shot:
+            zs = _load_zero_shot(float(os.environ.get("ZERO_SHOT_THRESHOLD", "0.15")))
+            extra = detections_to_contract(image_path, zs.predict(image), "owlv2-base-patch16-ensemble", None, "zero_shot")
+            for o in extra["observations"]:
+                o["observation_id"] = o["observation_id"].replace("DET-", "ZS-")
+            if result is None:
+                result = extra
+            else:
+                result["observations"] += extra["observations"]
     except ImportError as exc:
         raise ModelUnavailableError(f"Detector packages not installed ({exc}). See ml/detection/README.md.") from exc
-    from PIL import Image
-    dets = det.predict(Image.open(image_path))
-    return detections_to_contract(image_path, dets, f"rf-detr-{os.environ.get('DETECTOR_MODEL_SIZE', 'small')}", weights)
+    return result
 
 
 def read_tags(image_path: str) -> dict:

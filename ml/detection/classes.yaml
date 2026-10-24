@@ -1,23 +1,29 @@
-# Classes the detector learns. Tag labels are NOT a class: OCR finds and reads them.
-# `prompts` are the descriptions OWLv2 uses to draw first-guess boxes (pre-labels).
-# Change a prompt freely; changing a class name means updating docs/contracts.md (component_type).
-version: 0.2
+# Classes we look for in photos. Tag labels are NOT a class: OCR finds and reads them.
+#
+# detector: true  -> the fine-tuned RF-DETR model learns this class from PUBLIC datasets.
+# detector: false -> no public training data exists, so OWLv2 (zero-shot, pretrained) finds it from `prompts`.
+# OWLv2 runs on every class, so `mcb` gets two independent opinions.
+# Company photos are never trained on: they are the test set.
+version: 0.3
 classes:
   - id: 1
     name: power_supply
+    detector: false
     description: DIN-rail power supply unit (PS.. tags), and redundancy modules (D13, D23) for now
     prompts:
       - "a DIN rail power supply unit"
       - "a grey industrial power supply module"
   - id: 2
     name: mcb
+    detector: true
     description: Miniature circuit breaker or isolator on a DIN rail (CB.., DS.. tags)
     prompts:
       - "a miniature circuit breaker"
       - "a white circuit breaker with a black switch"
   - id: 3
     name: io_module
-    description: One I/O carrier column block (the stacks of modules with yellow labels)
+    detector: false
+    description: One I/O carrier block (the numbered stacks of modules with yellow labels)
     prompts:
       - "an I/O module rack with yellow labels"
       - "a column of terminal modules"
