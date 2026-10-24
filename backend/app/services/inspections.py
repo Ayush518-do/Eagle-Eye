@@ -256,6 +256,7 @@ def _run_detector_on_images(session: Session, inspection_id: str) -> None:
 # Module-level cache so successive inspections re-use the loaded weights (not the SQLAlchemy
 # session). Reset when the process restarts.
 _DETECTOR_CACHE: dict[str, object] = {}
+_ZERO_SHOT_CACHE: dict[tuple, object] = {}
 
 
 def _get_cached_detector(weights_path):
@@ -267,6 +268,81 @@ def _get_cached_detector(weights_path):
         cached = RFDETRDetector(weights_path, size="small", threshold=0.3)
         _DETECTOR_CACHE[key] = cached
     return cached
+
+
+def _get_cached_zero_shot(classes: tuple[str, ...], threshold: float):
+    """Load (and remember) the OWLv2 zero-shot detector for the given class subset."""
+    key = (classes, threshold)
+    cached = _ZERO_SHOT_CACHE.get(key)
+    if cached is None:
+        from ml.detection.zero_shot import OWLv2Detector
+        cached = OWLv2Detector(threshold=threshold, classes=list(classes))
+        _ZERO_SHOT_CACHE[key] = cached
+    return cached
+
+
+def _run_zero_shot_on_images(session: Session, inspection_id: str) -> None:
+    """Run OWLv2 zero-shot detection for the component classes the trained detector
+    doesn't cover (power_supply, io_module). Produces Contract B 'component' observations
+    with source='zero_shot' and the OWLv2 confidence as `confidence`.
+
+    Threshold is 0.25 (higher precision than the labelling default of 0.15) to limit noise.
+    Idempotent per image: images that already have zero_shot observations are skipped.
+    Failures per image are logged, not fatal.
+    """
+    try:
+        from backend.app.config import get_settings
+        from backend.app.services.storage import find_upload
+    except ImportError:
+        return
+    settings = get_settings()
+    try:
+        from PIL import Image, ImageOps
+    except ImportError as exc:
+        log.warning("Pillow unavailable (%s); skipping zero-shot inference.", exc)
+        return
+    # The two classes the trained detector was NOT trained on; OWLv2 fills them in.
+    zero_shot_classes = ("power_supply", "io_module")
+    try:
+        model = _get_cached_zero_shot(zero_shot_classes, threshold=0.25)
+    except Exception as exc:
+        log.warning("Could not initialise OWLv2 zero-shot detector: %s", exc)
+        return
+    for img in images_of(session, inspection_id):
+        already = session.scalars(select(models.Observation).where(
+            models.Observation.image_id == img.id, models.Observation.source == "zero_shot").limit(1)).first()
+        if already is not None:
+            continue
+        found = find_upload(settings.upload_dir, img.file_id)
+        if found is None:
+            log.warning("Image %s file not on disk; skipping zero-shot.", img.id)
+            continue
+        try:
+            pil = ImageOps.exif_transpose(Image.open(found[0])).convert("RGB")
+            dets = model.predict(pil)
+        except Exception as exc:
+            log.warning("OWLv2 zero-shot failed on image %s: %s", img.id, exc)
+            continue
+        log.info("Zero-shot on image %s produced %d component detections.", img.id, len(dets))
+        for i, d in enumerate(sorted(dets, key=lambda d: (d["bbox"][1], d["bbox"][0])), start=1):
+            try:
+                session.add(models.Observation(
+                    image_id=img.id,
+                    observation_id=f"ZS-{img.id}-{i:03d}",
+                    source="zero_shot",
+                    kind="component",
+                    class_name=d.get("class_name") or "power_supply",
+                    bbox=[round(float(v), 1) for v in d["bbox"]],
+                    confidence=round(float(d.get("score") or 0.0), 4),
+                    text=None,
+                    raw_text=None,
+                    text_confidence=None,
+                    model={"name": "owlv2-base-patch16-ensemble", "version": "google-apache-2.0",
+                           "weights_sha256": None},
+                ))
+            except Exception as exc:
+                log.warning("Could not store zero-shot observation on %s: %s", img.id, exc)
+        session.flush()
 
 
 def _run_ocr_on_images(session: Session, inspection_id: str, expected_tags: list[str]) -> None:
@@ -348,19 +424,22 @@ def run_inspection_job(factory: sessionmaker[Session], inspection_id: str) -> No
 
     Steps:
     1) Run the trained RF-DETR component detector on every image to produce 'component' observations
-       (unless detector observations already exist, e.g. from a previous run). Needs
-       DETECTOR_WEIGHTS_PATH to point at a readable .pth file; silently skipped otherwise.
-    2) Run the OCR tag reader on every image to produce tag_label observations
+       for the classes the detector was trained on (mcb). Needs DETECTOR_WEIGHTS_PATH to point at a
+       readable .pth file; silently skipped otherwise.
+    2) Run the OWLv2 zero-shot detector for classes the trained model doesn't cover
+       (power_supply, io_module). Threshold 0.25 for precision. Idempotent per image.
+    3) Run the OCR tag reader on every image to produce tag_label observations
        (unless OCR observations are already stored for that image, e.g. from a previous run or a
        manual upload). Failures per image are logged, not fatal.
-    3) Build Contract B observation lists per image and run the comparison engine.
-    4) Save findings and mark the inspection done. Any uncaught exception marks the run failed.
+    4) Build Contract B observation lists per image and run the comparison engine.
+    5) Save findings and mark the inspection done. Any uncaught exception marks the run failed.
     """
     with factory() as session:
         try:
             inspection = session.get(models.Inspection, inspection_id)
             expected = [expected_item_schema(r) for r in list_expected_items(session, inspection.design_revision_id)]
             _run_detector_on_images(session, inspection_id)
+            _run_zero_shot_on_images(session, inspection_id)
             _run_ocr_on_images(session, inspection_id, [e.tag for e in expected])
             by_image = {img.id: [observation_schema(o) for o in observations_of(session, img.id)]
                         for img in images_of(session, inspection_id)}

@@ -80,7 +80,10 @@ class ModelInfo(BaseModel):
 
 class Observation(BaseModel):
     observation_id: str
-    source: Literal["detector", "ocr", "manual", "synthetic"]
+    # 'zero_shot' is a pretrained text-prompted detector (OWLv2 etc). It stays separate from
+    # 'detector' (which is reserved for the model fine-tuned on our labels) so the engine can
+    # weigh them differently and the UI can colour-code them.
+    source: Literal["detector", "zero_shot", "ocr", "manual", "synthetic"]
     kind: Literal["component", "tag_label", "rating"]
     class_name: str
     bbox: BBox
