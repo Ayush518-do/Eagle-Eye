@@ -111,7 +111,7 @@ export default function Analytics() {
         <>
           {/* KPI Cards Row */}
           <div className="metrics-grid">
-            <div className="metric-card">
+            <div className="metric-card m-b">
               <div className="metric-label">
                 <span>Total Inspections</span>
                 <Layers size={16} color="var(--color-navy)" />
@@ -120,7 +120,7 @@ export default function Analytics() {
               <div className="metric-sub">Completed automated runs</div>
             </div>
 
-            <div className="metric-card">
+            <div className="metric-card m-p">
               <div className="metric-label">
                 <span>Verified Clean Pass</span>
                 <CheckCircle2 size={16} color="var(--color-status-approved)" />
@@ -131,7 +131,7 @@ export default function Analytics() {
               <div className="metric-sub">Zero discrepancies detected</div>
             </div>
 
-            <div className="metric-card">
+            <div className="metric-card m-r">
               <div className="metric-label">
                 <span>Review Required</span>
                 <Clock size={16} color="var(--color-status-review)" />
@@ -142,7 +142,7 @@ export default function Analytics() {
               <div className="metric-sub">Uncertain readings / order changes</div>
             </div>
 
-            <div className="metric-card">
+            <div className="metric-card m-f">
               <div className="metric-label">
                 <span>Mismatch Detected</span>
                 <AlertTriangle size={16} color="var(--color-status-mismatch)" />

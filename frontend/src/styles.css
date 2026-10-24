@@ -15,6 +15,7 @@
   --color-offwhite: #F4F6F9;       /* app background */
   --color-surface: #FFFFFF;        /* cards */
   --color-surface-subtle: #FAFBFC; /* table headers, chips */
+  --color-bg-subtle: #FAFBFC;      /* alias used by components */
 
   /* Text */
   --color-text-main: #1B2A3A;
@@ -331,6 +332,12 @@ code, pre, .mono, .tag-code {
   color: var(--color-text-muted);
 }
 
+/* Shared pulse animation (loaders / alignment placeholders) */
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
 /* Compact counts pills in the inspection header */
 .counts-pills {
   display: flex;
@@ -561,58 +568,56 @@ code, pre, .mono, .tag-code {
   border-bottom: none;
 }
 
-.table tbody tr:hover {
-  background-color: #fafbfc;
+.table tbody tr:nth-child(even) td {
+  background-color: var(--color-surface-subtle);
 }
 
-.table tbody tr.selected {
-  background-color: #f1f6fc;
+.table tbody tr:hover td {
+  background-color: var(--color-blue-50);
 }
 
-/* Status Badges */
+.table tbody tr.selected td {
+  background-color: var(--color-blue-100);
+}
+
+/* Status Badges — softer "chip" look (pill, no border, 2-tone) */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 7px;
-  font-size: 11px;
+  padding: 3px 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: 1px solid;
+  border-radius: 999px;
+  border: 0;
   line-height: 1.4;
   white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
 .badge-approved, .badge-verified, .badge-pass {
   background-color: var(--color-status-approved-bg);
-  border-color: #a3e3af;
   color: var(--color-status-approved);
 }
 
 .badge-mismatch, .badge-mismatch_detected, .badge-potential_mismatch {
   background-color: var(--color-status-mismatch-bg);
-  border-color: #f1aeb5;
   color: var(--color-status-mismatch);
 }
 
 .badge-review, .badge-needs_review, .badge-review_required {
   background-color: var(--color-status-review-bg);
-  border-color: #fcd34d;
   color: var(--color-status-review);
 }
 
 .badge-inconclusive, .badge-pending {
   background-color: var(--color-status-inconclusive-bg);
-  border-color: var(--color-border);
   color: var(--color-status-inconclusive);
 }
 
 .badge-order-changed {
-  background-color: #ddf4ff;
-  border-color: #54aeff;
-  color: #0969da;
+  background-color: var(--color-blue-50);
+  color: var(--color-navy-light);
 }
 
 /* Arrangement / Order View */

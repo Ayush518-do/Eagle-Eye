@@ -20,6 +20,8 @@ export default function AlignmentModal({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
+  const [drawingLoaded, setDrawingLoaded] = useState(false);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
 
   const drawingImgRef = useRef(null);
   const photoImgRef = useRef(null);
@@ -162,16 +164,28 @@ export default function AlignmentModal({
               </span>
             </div>
             <div
-              style={{ position: 'relative', width: '100%', height: '320px', backgroundColor: '#f6f8fa', cursor: drawingPoints.length < 4 ? 'crosshair' : 'default', overflow: 'hidden' }}
-              onClick={handleDrawingClick}
+              style={{ position: 'relative', width: '100%', height: '320px', backgroundColor: '#f6f8fa', cursor: drawingLoaded && drawingPoints.length < 4 ? 'crosshair' : 'default', overflow: 'hidden' }}
+              onClick={drawingLoaded ? handleDrawingClick : undefined}
               ref={drawingImgRef}
             >
               {drawingUrl ? (
-                <img
-                  src={drawingUrl}
-                  alt="Drawing Page"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
-                />
+                <>
+                  <img
+                    src={drawingUrl}
+                    alt="Drawing Page"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', opacity: drawingLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
+                    onLoad={() => setDrawingLoaded(true)}
+                    onError={() => setDrawingLoaded(true)}
+                  />
+                  {!drawingLoaded && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', fontSize: '12px', background: 'var(--color-surface-subtle)' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div className="shimmer-dot" style={{ width: 28, height: 28, margin: '0 auto 8px', borderRadius: '50%', background: 'var(--color-border-subtle)', animation: 'pulse 1.2s ease-in-out infinite' }} />
+                        Loading page {drawingPage}…
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <svg width="100%" height="100%" viewBox="0 0 500 350" style={{ pointerEvents: 'none' }}>
                   <rect x="0" y="0" width="500" height="350" fill="#f8fafc" />
@@ -234,16 +248,28 @@ export default function AlignmentModal({
               </span>
             </div>
             <div
-              style={{ position: 'relative', width: '100%', height: '320px', backgroundColor: '#131b26', cursor: photoPoints.length < 4 ? 'crosshair' : 'default', overflow: 'hidden' }}
-              onClick={handlePhotoClick}
+              style={{ position: 'relative', width: '100%', height: '320px', backgroundColor: '#131b26', cursor: photoLoaded && photoPoints.length < 4 ? 'crosshair' : 'default', overflow: 'hidden' }}
+              onClick={photoLoaded ? handlePhotoClick : undefined}
               ref={photoImgRef}
             >
               {photoUrl ? (
-                <img
-                  src={photoUrl}
-                  alt="Cabinet Photo"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
-                />
+                <>
+                  <img
+                    src={photoUrl}
+                    alt="Cabinet Photo"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', opacity: photoLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
+                    onLoad={() => setPhotoLoaded(true)}
+                    onError={() => setPhotoLoaded(true)}
+                  />
+                  {!photoLoaded && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#8ea1be', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div className="shimmer-dot" style={{ width: 28, height: 28, margin: '0 auto 8px', borderRadius: '50%', background: '#1c2534', animation: 'pulse 1.2s ease-in-out infinite' }} />
+                        Loading photo…
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <svg width="100%" height="100%" viewBox="0 0 500 350" style={{ pointerEvents: 'none' }}>
                   <rect x="0" y="0" width="500" height="350" fill="#131b26" />
