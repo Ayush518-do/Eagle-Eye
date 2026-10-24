@@ -11,6 +11,8 @@ Eagle Eye is divided into four parts. Each part has one owner, one branch and on
 
 Team: Ayush, Pranay, Aditya, Archita. Fill in the Owner column once parts are assigned.
 
+First-time setup: [`../setup.md`](../setup.md).
+
 ## How the parts connect
 
 ```text
