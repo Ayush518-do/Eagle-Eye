@@ -14,6 +14,11 @@ const CLASS_COLORS = {
 export default function ImageWithBoxes({
   imageUrl = '',
   boxes = [],
+  ghostBoxes = [],
+  missingExpectedBoxes = [],
+  alignmentSet = false,
+  onOpenAlignment = null,
+  onResetAlignment = null,
   highlightedId = null,
   onBoxClick = null,
   imageDimensions = { width: 1600, height: 1000 },
@@ -29,10 +34,11 @@ export default function ImageWithBoxes({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // Layer toggles (§2.3)
+  // Layer toggles (§2.3 & §3.4)
   const [showTags, setShowTags] = useState(true);
   const [showComponents, setShowComponents] = useState(true);
   const [findingsOnly, setFindingsOnly] = useState(false);
+  const [showGhost, setShowGhost] = useState(true);
 
   // Tooltip state
   const [hoveredBox, setHoveredBox] = useState(null);
@@ -212,22 +218,64 @@ export default function ImageWithBoxes({
             />
             <span>Findings only</span>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: showGhost ? 'var(--color-primary)' : 'inherit' }}>
+            <input
+              type="checkbox"
+              checked={showGhost}
+              onChange={(e) => setShowGhost(e.target.checked)}
+            />
+            <span>Ghost overlay</span>
+          </label>
+        </div>
+
+        {/* Alignment Actions (§3.4) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {onOpenAlignment && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenAlignment}
+              title="Align 4 corners between drawing and photo"
+              style={{ fontSize: '11px', padding: '3px 8px' }}
+            >
+              <Crosshair size={12} />
+              <span>{alignmentSet ? 'Edit Alignment' : 'Align 4 Corners'}</span>
+            </button>
+          )}
+          {alignmentSet && onResetAlignment && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onResetAlignment}
+              title="Reset saved alignment"
+              style={{ fontSize: '11px', padding: '3px 8px' }}
+            >
+              <RotateCcw size={12} />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
 
         {/* Component Legend */}
         <div className="viewer-legend">
           <span className="legend-item">
             <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.mcb }} />
-            <span>Breaker (MCB)</span>
+            <span>Breaker</span>
           </span>
           <span className="legend-item">
             <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.power_supply }} />
-            <span>Power Supply</span>
+            <span>PSU</span>
           </span>
           <span className="legend-item">
             <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.io_module }} />
-            <span>I/O Module</span>
+            <span>I/O</span>
           </span>
+          {showGhost && (
+            <span className="legend-item">
+              <span className="legend-swatch" style={{ backgroundColor: 'transparent', border: '2px dashed #9333ea' }} />
+              <span>Ghost (Drawing)</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -361,8 +409,126 @@ export default function ImageWithBoxes({
                   </g>
                 );
               })}
+
+            {/* Ghost Overlay Layer (§3.4, contract E) */}
+            {showGhost &&
+              ghostBoxes.map((ghost, idx) => {
+                const [x1, y1, x2, y2] = ghost.bbox || [0, 0, 0, 0];
+                const w = Math.max(x2 - x1, 10);
+                const h = Math.max(y2 - y1, 10);
+                const ghostColor =
+                  ghost.status === 'potential_mismatch'
+                    ? '#cf222e'
+                    : ghost.status === 'verified'
+                    ? '#1a7f37'
+                    : ghost.status === 'needs_review'
+                    ? '#9a6700'
+                    : '#6e7781';
+
+                return (
+                  <g key={`ghost-${idx}`} className="ghost-box-group">
+                    <rect
+                      x={x1}
+                      y={y1}
+                      width={w}
+                      height={h}
+                      fill="rgba(147, 51, 234, 0.04)"
+                      stroke={ghostColor}
+                      strokeWidth="2"
+                      strokeDasharray="6,4"
+                      rx="3"
+                      ry="3"
+                    />
+                    <rect
+                      x={x1}
+                      y={Math.max(y1 - 18, 2)}
+                      width={Math.min((ghost.tag || '').length * 8 + 32, w + 40)}
+                      height="16"
+                      fill={ghostColor}
+                      opacity="0.9"
+                      rx="2"
+                      ry="2"
+                    />
+                    <text
+                      x={x1 + 4}
+                      y={Math.max(y1 - 6, 14)}
+                      fontSize="10"
+                      fontWeight="600"
+                      fill="#ffffff"
+                      fontFamily="monospace"
+                    >
+                      Ghost: {ghost.tag}
+                    </text>
+                  </g>
+                );
+              })}
+
+            {/* Missing Component Expected Spot (§3.4, contract E) */}
+            {showGhost &&
+              missingExpectedBoxes.map((item, idx) => {
+                const [x1, y1, x2, y2] = item.expected_bbox || [0, 0, 0, 0];
+                const w = Math.max(x2 - x1, 10);
+                const h = Math.max(y2 - y1, 10);
+                return (
+                  <g key={`missing-exp-${idx}`} className="missing-expected-group">
+                    <rect
+                      x={x1}
+                      y={y1}
+                      width={w}
+                      height={h}
+                      fill="rgba(207, 34, 46, 0.08)"
+                      stroke="#cf222e"
+                      strokeWidth="2.5"
+                      strokeDasharray="4,4"
+                      rx="3"
+                      ry="3"
+                    />
+                    <rect
+                      x={x1}
+                      y={Math.max(y1 - 20, 2)}
+                      width={Math.min((item.tag || item.expected_tag || '').length * 8 + 60, w + 50)}
+                      height="18"
+                      fill="#cf222e"
+                      rx="2"
+                      ry="2"
+                    />
+                    <text
+                      x={x1 + 4}
+                      y={Math.max(y1 - 7, 15)}
+                      fontSize="10"
+                      fontWeight="700"
+                      fill="#ffffff"
+                    >
+                      Expected: {item.tag || item.expected_tag}
+                    </text>
+                  </g>
+                );
+              })}
           </svg>
         </div>
+
+        {/* Floating Approximate Ghost Notice (§3.4) */}
+        {showGhost && (ghostBoxes.length > 0 || missingExpectedBoxes.length > 0) && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.94)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-text-muted)',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+              zIndex: 10,
+              pointerEvents: 'none',
+            }}
+          >
+            Approximate positions from the drawing
+          </div>
+        )}
 
         {/* Hover Tooltip (§2.3) */}
         {hoveredBox && (

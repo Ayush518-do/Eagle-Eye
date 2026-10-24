@@ -24,6 +24,8 @@ import {
   getReportUrl,
   getExportCsvUrl,
   downloadFindingsCsv,
+  deleteAlignment,
+  getDrawingPageUrl,
 } from '../api.js';
 import ImageWithBoxes from '../components/ImageWithBoxes.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -31,6 +33,7 @@ import SyntheticBanner from '../components/SyntheticBanner.jsx';
 import Modal from '../components/Modal.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
 import ArrangementSection from '../components/ArrangementSection.jsx';
+import AlignmentModal from '../components/AlignmentModal.jsx';
 
 export default function Results() {
   const { inspectionId } = useParams();
@@ -55,6 +58,7 @@ export default function Results() {
   // Modals
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isReinspectModalOpen, setIsReinspectModalOpen] = useState(false);
+  const [isAlignmentModalOpen, setIsAlignmentModalOpen] = useState(false);
   const [reinspectNotes, setReinspectNotes] = useState('');
 
   // Load Inspection Data
@@ -151,6 +155,68 @@ export default function Results() {
     }
     return list;
   }, [findings, activeImage, data]);
+
+  // Missing components expected positions (§3.4, contract E)
+  const missingExpectedBoxes = useMemo(() => {
+    return findings
+      .filter(
+        (f) =>
+          (f.type === 'missing' || f.type === 'missing_component') &&
+          (f.expected_bbox || f.observation?.expected_bbox)
+      )
+      .map((f) => ({
+        tag: f.expected_tag || f.tag || f.finding_id,
+        expected_bbox: f.expected_bbox || f.observation?.expected_bbox,
+        status: f.status,
+      }));
+  }, [findings]);
+
+  // Reset 4-point corner alignment (§3.4)
+  const handleResetAlignment = async () => {
+    try {
+      await deleteAlignment(activeImage.image_id);
+    } catch {
+      // offline / mock tolerance
+    }
+    setData((prev) => {
+      if (!prev || !prev.images) return prev;
+      return {
+        ...prev,
+        images: prev.images.map((img) =>
+          img.image_id === activeImage.image_id ? { ...img, alignment_set: false, ghost: [] } : img
+        ),
+      };
+    });
+    setActionFeedback('Alignment reset to default.');
+  };
+
+  // Handle saved 4-point corner alignment (§3.4)
+  const handleAlignmentSaved = () => {
+    setData((prev) => {
+      if (!prev || !prev.images) return prev;
+      const ghostBoxes = prev.findings
+        .filter((f) => f.observation?.bbox || f.expected_bbox)
+        .map((f) => ({
+          tag: f.expected_tag || f.observed_tag || f.tag,
+          bbox: f.expected_bbox || f.observation?.bbox,
+          status: f.status,
+        }));
+
+      return {
+        ...prev,
+        images: prev.images.map((img) =>
+          img.image_id === activeImage.image_id
+            ? {
+                ...img,
+                alignment_set: true,
+                ghost: img.ghost && img.ghost.length > 0 ? img.ghost : ghostBoxes,
+              }
+            : img
+        ),
+      };
+    });
+    setActionFeedback('Corner alignment saved! Ghost overlay mapped.');
+  };
 
   // Currently selected finding object
   const selectedFinding = useMemo(() => {
@@ -408,6 +474,11 @@ export default function Results() {
           <ImageWithBoxes
             imageUrl={activeImage.url}
             boxes={boxes}
+            ghostBoxes={activeImage.ghost || []}
+            missingExpectedBoxes={missingExpectedBoxes}
+            alignmentSet={Boolean(activeImage.alignment_set)}
+            onOpenAlignment={() => setIsAlignmentModalOpen(true)}
+            onResetAlignment={handleResetAlignment}
             highlightedId={selectedFindingId}
             onBoxClick={(boxId) => setSelectedFindingId(boxId)}
             imageDimensions={{
@@ -695,6 +766,21 @@ export default function Results() {
           />
         </div>
       </Modal>
+
+      {/* 4-Point Corner Alignment Modal (§3.4, contract E) */}
+      <AlignmentModal
+        isOpen={isAlignmentModalOpen}
+        onClose={() => setIsAlignmentModalOpen(false)}
+        imageId={activeImage.image_id}
+        photoUrl={activeImage.url}
+        drawingUrl={data?.design_revision_id ? getDrawingPageUrl(data.design_revision_id, 1) : ''}
+        drawingPage={1}
+        imageDimensions={{
+          width: activeImage.width || 1600,
+          height: activeImage.height || 1000,
+        }}
+        onSaveSuccess={handleAlignmentSaved}
+      />
     </div>
   );
 }

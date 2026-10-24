@@ -162,6 +162,25 @@ export async function getAnalytics(from, to) {
 export const getCabinetQrUrl = (cabinetId) =>
   `${API_URL}/api/cabinets/${encodeURIComponent(cabinetId)}/qr`;
 
+// Ghost Overlay & 4-Point Alignment (§3.4, contract E)
+export const saveAlignment = (imageId, payload) =>
+  request(`/api/images/${encodeURIComponent(imageId)}/alignment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+export const getAlignment = (imageId) =>
+  request(`/api/images/${encodeURIComponent(imageId)}/alignment`);
+
+export const deleteAlignment = (imageId) =>
+  request(`/api/images/${encodeURIComponent(imageId)}/alignment`, {
+    method: 'DELETE',
+  });
+
+export const getDrawingPageUrl = (revisionId, page = 1, width = 2000) =>
+  `${API_URL}/api/design-revisions/${encodeURIComponent(revisionId)}/drawing-pages/${encodeURIComponent(page)}.png?width=${width}`;
+
 // Helper to provide synthetic fallbacks when backend endpoints return 404 or are unreachable
 export { syntheticData };
 

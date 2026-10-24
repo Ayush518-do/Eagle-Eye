@@ -16,7 +16,14 @@
         "width": 1600,
         "height": 1000,
         "filename": "cabinet_main_elevation.jpg",
-        "quality_flags": ["good_lighting"]
+        "quality_flags": ["good_lighting"],
+        "alignment_set": true,
+        "ghost": [
+          { "tag": "CB11", "bbox": [180, 220, 320, 680], "status": "potential_mismatch" },
+          { "tag": "CB12", "bbox": [340, 220, 480, 680], "status": "needs_review" },
+          { "tag": "PS13", "bbox": [540, 200, 880, 720], "status": "verified" },
+          { "tag": "IO21", "bbox": [950, 230, 1180, 690], "status": "inconclusive" }
+        ]
       },
       {
         "image_id": "IMG-002",
@@ -128,6 +135,7 @@
         "observed_text": null,
         "observation": null,
         "evidence": [],
+        "expected_bbox": [950, 230, 1180, 690],
         "status": "inconclusive",
         "sources": [],
         "evidence_score": null,
