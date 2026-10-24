@@ -73,11 +73,15 @@ export default function Results() {
         setSelectedFindingId(res.findings[0].finding_id);
       }
     } catch (err) {
-      // If 404 or backend unavailable, provide clean fallback with synthetic data option
+      // Only fall back to synthetic for the explicit demo IDs; otherwise show the real error state.
       setError(err.message || 'Inspection could not be retrieved.');
-      setData(syntheticData.inspection);
-      if (syntheticData.inspection.findings?.length > 0) {
-        setSelectedFindingId(syntheticData.inspection.findings[0].finding_id);
+      if (isExplicitSynthetic) {
+        setData(syntheticData.inspection);
+        if (syntheticData.inspection.findings?.length > 0) {
+          setSelectedFindingId(syntheticData.inspection.findings[0].finding_id);
+        }
+      } else {
+        setData(null);
       }
     } finally {
       setLoading(false);

@@ -62,45 +62,33 @@ export default function Dashboard() {
         });
       }
 
-      // Handle Cabinets & Inspections
+      // Handle Cabinets & Inspections — real backend data only; empty state when none exist.
       let loadedCabinets = [];
       if (cabRes.status === 'fulfilled' && Array.isArray(cabRes.value)) {
         loadedCabinets = cabRes.value;
-      } else {
-        // Fallback to synthetic cabinets if backend endpoint is 404 or offline
-        loadedCabinets = syntheticData.cabinets;
       }
 
       setCabinets(loadedCabinets);
 
-      // Generate recent inspections list from cabinets & synthetic inspection
-      const recentList = [
-        {
-          inspection_id: syntheticData.inspection.inspection_id,
-          cabinet_id: syntheticData.inspection.cabinet_id,
-          cabinet_name: syntheticData.inspection.cabinet_name,
-          overall_status: syntheticData.inspection.overall_status,
-          created_at: syntheticData.inspection.created_at,
-          findings_count: syntheticData.inspection.findings.length,
-          mismatches: syntheticData.inspection.counts.potential_mismatch,
-        },
-        ...syntheticData.passport.inspections.slice(1).map((i) => ({
-          inspection_id: i.inspection_id,
-          cabinet_id: syntheticData.passport.cabinet_id,
-          cabinet_name: syntheticData.passport.name,
-          overall_status: i.overall_status,
-          created_at: i.created_at,
-          findings_count: 5,
-          mismatches: i.overall_status === 'mismatch_detected' ? 1 : 0,
-        })),
-      ];
+      // Build the recent inspections list from the real cabinets' latest_inspection_* fields.
+      const recentList = loadedCabinets
+        .filter((c) => c.latest_inspection_id)
+        .map((c) => ({
+          inspection_id: c.latest_inspection_id,
+          cabinet_id: c.cabinet_id,
+          cabinet_name: c.name,
+          overall_status: c.latest_overall_status,
+          created_at: c.latest_inspection_created_at || c.created_at,
+          findings_count: null,
+          mismatches: c.latest_overall_status === 'mismatch_detected' ? 1 : 0,
+        }));
 
       setInspections(recentList.slice(0, 10));
 
-      // Calculate Metrics
-      const pendingCount = syntheticData.inspection.counts.needs_review || 2;
-      const mismatchCount = syntheticData.inspection.counts.potential_mismatch || 1;
-      const passCount = loadedCabinets.filter((c) => c.status === 'pass').length;
+      // Metrics derived from the live cabinets list; zero when empty.
+      const pendingCount = recentList.filter((r) => r.overall_status === 'review_required').length;
+      const mismatchCount = recentList.filter((r) => r.overall_status === 'mismatch_detected').length;
+      const passCount = recentList.filter((r) => r.overall_status === 'pass').length;
 
       setMetrics({
         totalCabinets: loadedCabinets.length,

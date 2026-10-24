@@ -15,9 +15,10 @@ import {
 import {
   getCabinets,
   createCabinet,
-  uploadFile,
   createDesignRevision,
+  parseDrawingForRevision,
   createInspection,
+  runInspection,
   syntheticData,
 } from '../api.js';
 
@@ -94,26 +95,20 @@ export default function NewInspection() {
       setIsSubmitting(true);
       setStatusFeedback('Registering new cabinet…');
       try {
-        let cabId = `CAB-${Date.now().toString().slice(-4)}`;
-        try {
-          const res = await createCabinet({
-            name: newCabinetName.trim(),
-            serial: newCabinetSerial.trim(),
-          });
-          if (res?.cabinet_id) cabId = res.cabinet_id;
-        } catch (apiErr) {
-          console.warn('Backend cabinet creation unavailable, using generated id:', apiErr.message);
-        }
-
+        // Build a URL-safe cabinet_id from the serial (letters, digits, . _ -, up to 40).
+        const safeSerial = newCabinetSerial.trim().replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40);
+        const cabinet_id = safeSerial || `CAB-${Date.now().toString().slice(-6)}`;
+        const res = await createCabinet({ cabinet_id, name: newCabinetName.trim() });
+        const createdId = res?.cabinet_id || cabinet_id;
         const newCab = {
-          cabinet_id: cabId,
+          cabinet_id: createdId,
           name: newCabinetName.trim(),
           serial: newCabinetSerial.trim(),
           status: 'pending',
           inspections_count: 0,
         };
         setAvailableCabinets((prev) => [newCab, ...prev]);
-        setSelectedCabinetId(cabId);
+        setSelectedCabinetId(createdId);
         setCurrentStep(2);
       } catch (err) {
         setErrorMessage(err.message || 'Error configuring cabinet.');
@@ -148,26 +143,31 @@ export default function NewInspection() {
     }
 
     setIsSubmitting(true);
-    setStatusFeedback('Uploading drawing and registering design revision…');
+    setStatusFeedback('Uploading drawing and extracting the expected parts list…');
     setErrorMessage('');
 
     try {
-      let uploadId = 'UPLOAD-DRAWING-LOCAL';
-      try {
-        const uploadRes = await uploadFile(drawingFile);
-        if (uploadRes?.upload_id) uploadId = uploadRes.upload_id;
-      } catch (uploadErr) {
-        console.warn('Backend upload unavailable, proceeding with local reference:', uploadErr.message);
+      // Backend takes the PDF directly as multipart (label + drawing file).
+      const label = `REV-${new Date().toISOString().slice(0, 10)}`;
+      const revisionRes = await createDesignRevision(selectedCabinetId, {
+        label,
+        drawing: drawingFile,
+      });
+      if (!revisionRes?.design_revision_id) {
+        throw new Error('Backend did not return a design_revision_id.');
       }
-      setDrawingUploadId(uploadId);
+      setDrawingRevisionId(revisionRes.design_revision_id);
+      setDrawingUploadId(revisionRes.design_revision_id);
 
+      // Auto-parse the drawing to populate expected items (BOM, tags, ratings, layout).
+      setStatusFeedback('Parsing the drawing to extract the expected parts list…');
       try {
-        const revisionRes = await createDesignRevision(selectedCabinetId, uploadId);
-        if (revisionRes?.design_revision_id) {
-          setDrawingRevisionId(revisionRes.design_revision_id);
-        }
-      } catch (revErr) {
-        console.warn('Backend design revision registration deferred:', revErr.message);
+        const parsed = await parseDrawingForRevision(revisionRes.design_revision_id);
+        const count = parsed?.items?.length || 0;
+        setStatusFeedback(`Extracted ${count} expected items from the drawing.`);
+      } catch (parseErr) {
+        console.warn('Drawing parse failed; continuing without expected items:', parseErr.message);
+        setStatusFeedback('Drawing stored, but automatic parts extraction failed. You can proceed and enter parts manually later.');
       }
 
       setCurrentStep(3);
@@ -175,7 +175,6 @@ export default function NewInspection() {
       setErrorMessage(err.message || 'Failed to process engineering drawing.');
     } finally {
       setIsSubmitting(false);
-      setStatusFeedback('');
     }
   };
 
@@ -211,29 +210,29 @@ export default function NewInspection() {
       return;
     }
 
+    if (!drawingRevisionId) {
+      setErrorMessage('Design revision was not registered. Please re-upload the drawing in step 2.');
+      return;
+    }
+
     setIsSubmitting(true);
-    setStatusFeedback('Uploading photographs and initializing automated inspection…');
+    setStatusFeedback('Uploading photographs and creating the inspection…');
     setErrorMessage('');
 
     try {
-      const uploadedPhotoIds = [];
-      for (const file of photoFiles) {
-        try {
-          const res = await uploadFile(file);
-          if (res?.upload_id) uploadedPhotoIds.push(res.upload_id);
-        } catch {
-          uploadedPhotoIds.push(`UPLOAD-IMG-${Date.now()}`);
-        }
-      }
+      // Backend takes photos directly as multipart (design_revision_id + photos files).
+      const inspRes = await createInspection(selectedCabinetId, {
+        designRevisionId: drawingRevisionId,
+        photos: photoFiles,
+      });
+      const inspectionId = inspRes?.inspection_id;
+      if (!inspectionId) throw new Error('Backend did not return an inspection_id.');
 
-      let inspectionId = 'INS-SYNTH-849'; // Fallback to synthetic review workspace if backend 404
+      // Kick off the comparison engine so Results has findings when the user arrives.
       try {
-        const inspRes = await createInspection(selectedCabinetId, uploadedPhotoIds);
-        if (inspRes?.inspection_id) {
-          inspectionId = inspRes.inspection_id;
-        }
-      } catch (inspErr) {
-        console.warn('Inspection creation endpoint unavailable, routing to inspection workspace:', inspErr.message);
+        await runInspection(inspectionId);
+      } catch (runErr) {
+        console.warn('Inspection run request failed; results may stay empty:', runErr.message);
       }
 
       navigate(`/inspections/${inspectionId}`);

@@ -17,7 +17,7 @@ from backend.app.services.expected_items import (
     ExpectedItemsError, list_expected_items, replace_from_submission,
 )
 from backend.app.services.pdf import check_pdf
-from backend.app.services.storage import UploadRejected, detect_type, remove_upload, save_upload
+from backend.app.services.storage import UploadRejected, detect_type, find_upload, remove_upload, save_upload
 
 router = APIRouter(tags=["cabinets"])
 
@@ -148,6 +148,43 @@ def replace_expected_items(
 # extra (not in the numbered list): read back the stored items, in the same Contract A shape
 @router.get("/design-revisions/{revision_id}/expected-items", response_model=schemas.ExpectedItemsSubmission)
 def get_expected_items(revision_id: str, db: Session = Depends(get_db)) -> schemas.ExpectedItemsSubmission:
+    return _expected_items_out(db, get_revision_or_404(db, revision_id))
+
+
+# extra: parse the drawing PDF already stored for this revision, auto-populate expected items.
+# Runs the ML drawing parser (ml.drawing.parse_drawing) and submits the result as Contract A.
+@router.post("/design-revisions/{revision_id}/parse-drawing",
+             response_model=schemas.ExpectedItemsSubmission, status_code=201)
+def parse_drawing_for_revision(
+    revision_id: str, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+) -> schemas.ExpectedItemsSubmission:
+    revision = get_revision_or_404(db, revision_id)
+    found = find_upload(settings.upload_dir, revision.drawing_file_id)
+    if found is None:
+        raise HTTPException(404, "Drawing file not found on disk for this revision.")
+    try:
+        from pathlib import Path
+        from ml.drawing.parse_drawing import to_contract
+    except ImportError as exc:
+        raise HTTPException(503, f"Drawing parser unavailable: {exc}") from exc
+    try:
+        parsed = to_contract(Path(found[0]))
+    except Exception as exc:  # parser failures should not 500 silently
+        raise HTTPException(422, f"Could not parse drawing: {exc!s}") from exc
+    submission = schemas.ExpectedItemsSubmission(
+        contract_version=parsed.get("contract_version") or schemas.CONTRACT_VERSION,
+        drawing_file_sha256=parsed.get("drawing_file_sha256"),
+        parser_version=parsed.get("parser_version"),
+        items=[schemas.ExpectedItem(**{k: v for k, v in item.items() if k in {
+            "tag", "part_number", "description", "quantity", "rating", "source_page", "layout"}})
+            for item in parsed.get("items") or []],
+    )
+    try:
+        replace_from_submission(db, revision_id, submission)
+        db.commit()
+    except ExpectedItemsError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from None
     return _expected_items_out(db, get_revision_or_404(db, revision_id))
 
 

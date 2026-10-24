@@ -61,28 +61,53 @@ export async function uploadFile(file) {
 // Cabinets
 export const getCabinets = () => request('/api/cabinets');
 export const getCabinet = (cabinetId) => request(`/api/cabinets/${encodeURIComponent(cabinetId)}`);
-export const createCabinet = (data) =>
+// Backend accepts {cabinet_id, name}; cabinet_id is URL-safe (letters, digits, . _ -, up to 40 chars).
+export const createCabinet = ({ cabinet_id, name }) =>
   request('/api/cabinets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ cabinet_id, name }),
   });
 
-// Design Revisions
-export const createDesignRevision = (cabinetId, drawingUploadId) =>
-  request(`/api/cabinets/${encodeURIComponent(cabinetId)}/design-revisions`, {
+// Design Revisions — the backend takes the PDF file directly (multipart) with a label.
+export function createDesignRevision(cabinetId, { label, drawing }) {
+  const form = new FormData();
+  form.append('label', label);
+  form.append('drawing', drawing, drawing.name || 'drawing.pdf');
+  return request(`/api/cabinets/${encodeURIComponent(cabinetId)}/design-revisions`, {
+    method: 'POST',
+    body: form,
+  });
+}
+
+// Submit a pre-parsed expected-items list for a design revision (Contract A).
+export const submitExpectedItems = (revisionId, submission) =>
+  request(`/api/design-revisions/${encodeURIComponent(revisionId)}/expected-items`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ drawing_upload_id: drawingUploadId }),
+    body: JSON.stringify(submission),
   });
 
-// Inspections
-export const createInspection = (cabinetId, photoUploadIds) =>
-  request(`/api/cabinets/${encodeURIComponent(cabinetId)}/inspections`, {
+// Trigger the server-side drawing parser on an already-uploaded PDF; auto-populates expected items.
+export const parseDrawingForRevision = (revisionId) =>
+  request(`/api/design-revisions/${encodeURIComponent(revisionId)}/parse-drawing`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ photo_upload_ids: photoUploadIds }),
   });
+
+// Inspections — backend takes photos directly (multipart) with the design_revision_id.
+export function createInspection(cabinetId, { designRevisionId, photos }) {
+  const form = new FormData();
+  form.append('design_revision_id', designRevisionId);
+  for (const p of photos) form.append('photos', p, p.name || 'photo.jpg');
+  return request(`/api/cabinets/${encodeURIComponent(cabinetId)}/inspections`, {
+    method: 'POST',
+    body: form,
+  });
+}
+
+// Trigger the inspection run (observations + comparison).
+export const runInspection = (inspectionId) =>
+  request(`/api/inspections/${encodeURIComponent(inspectionId)}/run`, { method: 'POST' });
 
 export async function getInspection(inspectionId) {
   if (inspectionId === 'synthetic' || inspectionId === 'INS-SYNTH-849') {
