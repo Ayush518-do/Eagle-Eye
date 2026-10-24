@@ -1,0 +1,16 @@
+# Starting class list. Agree changes with Part 2 (tag reading) and Part 3 (comparison).
+# Keep it small: every class needs enough labelled examples.
+version: 0.1
+classes:
+  - id: 0
+    name: mcb
+    description: Miniature circuit breaker (CB.. tags)
+  - id: 1
+    name: power_supply
+    description: DIN-rail power supply (PS.. tags)
+  - id: 2
+    name: io_baseplate
+    description: I/O module baseplate column
+  - id: 3
+    name: tag_label
+    description: Printed tag label on or next to a part, e.g. "CB11"
