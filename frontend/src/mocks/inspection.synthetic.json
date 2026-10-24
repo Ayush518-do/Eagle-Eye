@@ -51,7 +51,14 @@
         "status": "potential_mismatch",
         "reason": "Drawing specifies 10A MCB, but photo OCR detected 16A marking.",
         "design_revision_id": "REV-B",
-        "reviews": []
+        "reviews": [
+          {
+            "decision": "confirmed_by_reviewer",
+            "reviewer": "Archita",
+            "note": "Label clearly shows 16A",
+            "created_at": "2026-10-24T10:42:00Z"
+          }
+        ]
       },
       {
         "finding_id": "F-002",

@@ -167,24 +167,35 @@ export default function Results() {
         reviewer: reviewerName,
         note: reviewNotes,
       });
-      // Optimistically update local status
+      // Optimistically update local status & record review event
+      const reviewEvent = {
+        decision: 'confirmed_by_reviewer',
+        reviewer: reviewerName,
+        note: reviewNotes || null,
+        created_at: new Date().toISOString(),
+      };
       setData((prev) => ({
         ...prev,
         findings: prev.findings.map((f) =>
           f.finding_id === selectedFinding.finding_id
-            ? { ...f, status: 'confirmed_by_reviewer' }
+            ? { ...f, status: 'confirmed_by_reviewer', reviews: [...(f.reviews || []), reviewEvent] }
             : f
         ),
       }));
       setActionFeedback(`Finding ${selectedFinding.finding_id} approved.`);
       setReviewNotes('');
     } catch (err) {
-      // In synthetic mode or 404, still update state locally so reviewer can test flow
+      const reviewEvent = {
+        decision: 'confirmed_by_reviewer',
+        reviewer: reviewerName,
+        note: reviewNotes || null,
+        created_at: new Date().toISOString(),
+      };
       setData((prev) => ({
         ...prev,
         findings: prev.findings.map((f) =>
           f.finding_id === selectedFinding.finding_id
-            ? { ...f, status: 'confirmed_by_reviewer' }
+            ? { ...f, status: 'confirmed_by_reviewer', reviews: [...(f.reviews || []), reviewEvent] }
             : f
         ),
       }));
@@ -199,6 +210,12 @@ export default function Results() {
   const handleConfirmReject = async () => {
     if (!selectedFinding) return;
     setIsSubmittingReview(true);
+    const reviewEvent = {
+      decision: 'rejected_by_reviewer',
+      reviewer: reviewerName,
+      note: reviewNotes || null,
+      created_at: new Date().toISOString(),
+    };
     try {
       await reviewFinding(selectedFinding.finding_id, {
         decision: 'rejected_by_reviewer',
@@ -209,7 +226,7 @@ export default function Results() {
         ...prev,
         findings: prev.findings.map((f) =>
           f.finding_id === selectedFinding.finding_id
-            ? { ...f, status: 'rejected_by_reviewer' }
+            ? { ...f, status: 'rejected_by_reviewer', reviews: [...(f.reviews || []), reviewEvent] }
             : f
         ),
       }));
@@ -221,7 +238,7 @@ export default function Results() {
         ...prev,
         findings: prev.findings.map((f) =>
           f.finding_id === selectedFinding.finding_id
-            ? { ...f, status: 'rejected_by_reviewer' }
+            ? { ...f, status: 'rejected_by_reviewer', reviews: [...(f.reviews || []), reviewEvent] }
             : f
         ),
       }));
@@ -231,6 +248,20 @@ export default function Results() {
     } finally {
       setIsSubmittingReview(false);
     }
+  };
+
+  // Unreviewed findings tracker (§2.1)
+  const unreviewedFindingIds = useMemo(() => {
+    return findings
+      .filter((f) => f.status === 'needs_review' || f.status === 'potential_mismatch')
+      .map((f) => f.finding_id);
+  }, [findings]);
+
+  const handleNextReview = () => {
+    if (unreviewedFindingIds.length === 0) return;
+    const currentIndex = unreviewedFindingIds.indexOf(selectedFindingId);
+    const nextIndex = (currentIndex + 1) % unreviewedFindingIds.length;
+    setSelectedFindingId(unreviewedFindingIds[nextIndex]);
   };
 
   // Handle Request Reinspection
@@ -505,7 +536,19 @@ export default function Results() {
                     Type: <strong style={{ textTransform: 'capitalize' }}>{(selectedFinding.type || '').replace('_', ' ')}</strong>
                   </div>
                 </div>
-                <StatusBadge status={selectedFinding.status} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleNextReview}
+                    disabled={unreviewedFindingIds.length === 0}
+                    title="Jump to next item needing review (§2.1)"
+                  >
+                    <span>Next item to review ({unreviewedFindingIds.length})</span>
+                    <ChevronRight size={13} />
+                  </button>
+                  <StatusBadge status={selectedFinding.status} />
+                </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: '10px' }}>
@@ -552,6 +595,24 @@ export default function Results() {
                   <span>Approve / Confirm</span>
                 </button>
               </div>
+
+              {/* Review History (§2.1) */}
+              {selectedFinding.reviews && selectedFinding.reviews.length > 0 && (
+                <div style={{ marginTop: '16px', borderTop: '1px solid var(--color-border-subtle)', paddingTop: '12px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                    Review History
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {selectedFinding.reviews.map((rev, rIdx) => (
+                      <div key={rIdx} style={{ fontSize: '12px', color: 'var(--color-navy)', background: 'var(--color-surface-subtle)', padding: '6px 10px', borderRadius: 'var(--radius-sm)' }}>
+                        <strong>{rev.decision === 'confirmed_by_reviewer' ? 'Confirmed' : rev.decision === 'rejected_by_reviewer' ? 'Rejected' : rev.decision}</strong> by {rev.reviewer || 'Inspector'}
+                        {rev.created_at && <span> · {new Date(rev.created_at).toLocaleDateString()} {new Date(rev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                        {rev.note && <span style={{ color: 'var(--color-text-muted)' }}> — &ldquo;{rev.note}&rdquo;</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
       </div>
