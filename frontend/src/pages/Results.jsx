@@ -17,6 +17,7 @@ import {
   FileText,
 } from 'lucide-react';
 import {
+  API_URL,
   getInspection,
   reviewFinding,
   requestReinspection,
@@ -476,7 +477,7 @@ export default function Results() {
           )}
 
           <ImageWithBoxes
-            imageUrl={activeImage.url}
+            imageUrl={activeImage.url?.startsWith('http') ? activeImage.url : `${API_URL}${activeImage.url || ''}`}
             boxes={boxes}
             ghostBoxes={activeImage.ghost || []}
             missingExpectedBoxes={missingExpectedBoxes}
@@ -776,7 +777,7 @@ export default function Results() {
         isOpen={isAlignmentModalOpen}
         onClose={() => setIsAlignmentModalOpen(false)}
         imageId={activeImage.image_id}
-        photoUrl={activeImage.url}
+        photoUrl={activeImage.url?.startsWith('http') ? activeImage.url : `${API_URL}${activeImage.url || ''}`}
         drawingUrl={data?.design_revision_id ? getDrawingPageUrl(data.design_revision_id, 1) : ''}
         drawingPage={1}
         imageDimensions={{
