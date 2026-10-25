@@ -11,7 +11,7 @@ import {
   ExternalLink,
   ShieldCheck,
 } from 'lucide-react';
-import { getHealth, getModelStatus, getCabinets, syntheticData } from '../api.js';
+import { getHealth, getModelStatus, getCabinets } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { SkeletonRow } from '../components/Skeleton.jsx';
 
@@ -50,15 +50,10 @@ export default function Dashboard() {
           detail: detector?.detail || (detector?.available ? 'Operational' : 'Training / Starting'),
         });
       } else {
-        const fallbackModels = [
-          { component: 'detector', available: true, detail: 'rf-detr-small v1' },
-          { component: 'ocr', available: true, detail: 'rapidocr engine' },
-          { component: 'drawing_parser', available: true, detail: 'parser v0.1' },
-        ];
-        setModelList(fallbackModels);
+        setModelList([]);
         setDetectorStatus({
-          online: true,
-          detail: 'Detector operational (fallback view)',
+          online: false,
+          detail: 'Pipeline services offline or unreachable',
         });
       }
 

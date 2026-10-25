@@ -296,3 +296,42 @@ def test_no_endpoint_can_update_or_delete_review_events(api):
     paths = api.get("/openapi.json").json()["paths"]
     review_paths = {p: set(v) for p, v in paths.items() if "review" in p}
     assert review_paths == {"/api/findings/{finding_id}/review": {"post"}}
+
+
+def test_get_finding_fit_feasibility_endpoint(api):
+    inspection_id, f = reviewed_setup(api)
+    ps_finding = f["PS11"]
+    fid = ps_finding["finding_id"]
+    r = api.get(f"/api/inspections/{inspection_id}/findings/{fid}/fit-feasibility")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["finding_id"] == fid
+    assert data["tag"] == "PS11"
+    assert len(data["candidates"]) > 0
+    for cand in data["candidates"]:
+        assert "Physical fit feasibility check only" in cand["safety_disclaimer"]
+        assert cand["classification"] in ("Compatible", "Potentially compatible", "Incompatible", "Cannot determine")
+
+    assert api.get(f"/api/inspections/{inspection_id}/findings/F-UNKNOWN/fit-feasibility").status_code == 404
+    assert api.get(f"/api/inspections/INS-UNKNOWN/findings/{fid}/fit-feasibility").status_code == 404
+
+
+def test_get_analytics_endpoint(api):
+    r0 = api.get("/api/analytics")
+    assert r0.status_code == 200
+    d0 = r0.json()
+    assert d0["inspections"] == 0
+    assert d0["overall"] == {"pass": 0, "review_required": 0, "mismatch_detected": 0}
+    assert d0["per_day"] == []
+
+    inspection_id, f = reviewed_setup(api)
+    review(api, f["PS11"]["finding_id"], "confirmed_by_reviewer")
+
+    r = api.get("/api/analytics")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["inspections"] == 1
+    assert "missing" in data["findings_by_type"]
+    assert data["review_outcomes"]["confirmed_by_reviewer"] >= 1
+    assert len(data["per_day"]) == 1
+    assert data["per_day"][0]["inspections"] == 1

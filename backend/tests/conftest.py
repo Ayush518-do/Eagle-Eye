@@ -13,6 +13,15 @@ from backend.app.main import app
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
 
+@pytest.fixture(autouse=True)
+def _restore_pillow_max_image_pixels():
+    default = 1024 * 1024 * 1024 // 4 // 3
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = default
+    yield
+    Image.MAX_IMAGE_PIXELS = default
+
+
 @pytest.fixture
 def api(tmp_path):
     """TestClient on a fresh migrated temporary database and a temporary upload folder."""

@@ -15,7 +15,7 @@ import {
   Printer,
   QrCode,
 } from 'lucide-react';
-import { getQualityPassport, getCabinet, getCabinets, getCabinetQrUrl, syntheticData } from '../api.js';
+import { getQualityPassport, getCabinet, getCabinets, getCabinetQrUrl } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
 
@@ -38,11 +38,7 @@ export default function CabinetHistory() {
       if (passRes.status === 'fulfilled' && passRes.value) {
         setPassport(passRes.value);
       } else {
-        // Fallback to synthetic passport
-        setPassport({
-          ...syntheticData.passport,
-          cabinet_id: cabinetId,
-        });
+        setPassport(null);
       }
 
       if (cabRes.status === 'fulfilled' && Array.isArray(cabRes.value)) {
@@ -51,10 +47,7 @@ export default function CabinetHistory() {
       }
     } catch (err) {
       setError(err.message);
-      setPassport({
-        ...syntheticData.passport,
-        cabinet_id: cabinetId,
-      });
+      setPassport(null);
     } finally {
       setLoading(false);
     }

@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     detector_weights_path: str = ""
     detector_model_name: str = ""
 
+    @field_validator("detector_weights_path")
+    @classmethod
+    def _anchor_detector_weights(cls, value: str) -> str:
+        if not value:
+            return value
+        p = Path(value)
+        return str(p if p.is_absolute() else (REPO_ROOT / p).resolve())
+
     @field_validator("upload_dir")
     @classmethod
     def _anchor_upload_dir(cls, value: Path) -> Path:

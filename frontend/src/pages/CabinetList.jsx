@@ -9,7 +9,7 @@ import {
   Clock,
   CheckCircle2,
 } from 'lucide-react';
-import { getCabinets, syntheticData } from '../api.js';
+import { getCabinets } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { SkeletonRow } from '../components/Skeleton.jsx';
 
@@ -25,13 +25,13 @@ export default function CabinetList() {
       setLoading(true);
       try {
         const res = await getCabinets();
-        if (Array.isArray(res) && res.length > 0) {
+        if (Array.isArray(res)) {
           setCabinets(res);
         } else {
-          setCabinets(syntheticData.cabinets);
+          setCabinets([]);
         }
       } catch {
-        setCabinets(syntheticData.cabinets);
+        setCabinets([]);
       } finally {
         setLoading(false);
       }
@@ -157,7 +157,9 @@ export default function CabinetList() {
                 {filteredAndSortedCabinets.length === 0 ? (
                   <tr>
                     <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: 'var(--color-text-muted)' }}>
-                      No electrical cabinets match your query.
+                      {cabinets.length === 0
+                        ? 'No electrical cabinets enrolled yet. Use the "New Cabinet" button to enroll one.'
+                        : 'No electrical cabinets match your query.'}
                     </td>
                   </tr>
                 ) : (

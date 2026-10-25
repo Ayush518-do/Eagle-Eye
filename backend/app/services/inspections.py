@@ -4,6 +4,8 @@ The run reads expected items and observations from the database *inside* the job
 session, never from a list built before the job started (the "everything inconclusive" bug in
 docs/team/backend.md). Findings and the final state are written in one transaction.
 """
+import collections
+from datetime import datetime, timezone
 import logging
 from typing import Optional
 
@@ -155,9 +157,17 @@ def _evidence_score(f: models.Finding) -> tuple[Optional[float], list[str]]:
       scores.
     """
     sources: list[str] = []
-    if f.detector_confidence is not None:
+    # Collect source labels from the evidence list itself (compare() stamps each piece of
+    # evidence with its originating source: ocr / detector / zero_shot / manual).
+    evidence_sources: list[str] = []
+    for e in (f.evidence or []):
+        src = (e or {}).get("source")
+        if src and src not in evidence_sources:
+            evidence_sources.append(src)
+    sources.extend(evidence_sources)
+    if f.detector_confidence is not None and "detector" not in sources and "zero_shot" not in sources:
         sources.append("detector")
-    if f.ocr_confidence is not None:
+    if f.ocr_confidence is not None and "ocr" not in sources:
         sources.append("ocr")
     distinct_images = len({(e or {}).get("image_id") for e in (f.evidence or []) if (e or {}).get("image_id")})
     if distinct_images >= 2:
@@ -377,20 +387,22 @@ def _run_ocr_on_images(session: Session, inspection_id: str, expected_tags: list
             continue
         try:
             pil = ImageOps.exif_transpose(Image.open(found[0])).convert("RGB")
-            # Fast path: one pass, no tiling, no rotation. Enough for upright close-up tag stickers.
-            tile = max(pil.width, pil.height)
-            tags = find_tags(pil, expected_clean or None, tile=tile, overlap=0.0, rotations=(0,))
+            # Fast tiled path: 512px tiles with 20% overlap catches small stickers (e.g. PS11, PS21, D23)
+            # while finishing in seconds.
+            tile = 512 if max(pil.width, pil.height) >= 768 else max(pil.width, pil.height)
+            overlap = 0.20 if tile == 512 else 0.0
+            tags = find_tags(pil, expected_clean or None, tile=tile, overlap=overlap, rotations=(0,))
             result = {
                 "observations": [{
                     "observation_id": f"OCR-{img.id}-{i:03d}",
                     "source": "ocr",
-                    "kind": "tag_label",
-                    "class_name": "tag_label",
+                    "kind": t.get("kind") or "tag_label",
+                    "class_name": t.get("class_name") or "tag_label",
                     "bbox": [round(float(v), 1) for v in t["bbox"]],
                     "confidence": None,
-                    "text": t["tag"],
-                    "raw_text": t["raw"],
-                    "text_confidence": round(float(t["score"]), 4),
+                    "text": t.get("tag") or (t.get("raw") if t.get("kind") == "rating" else None),
+                    "raw_text": t.get("raw") or t.get("text"),
+                    "text_confidence": round(float(t["score"]), 4) if t.get("score") is not None else None,
                     "model": {"name": "rapidocr-onnxruntime", "version": None, "weights_sha256": None},
                 } for i, t in enumerate(sorted(tags, key=lambda t: (t["bbox"][1], t["bbox"][0])), start=1)],
             }
@@ -438,6 +450,30 @@ def run_inspection_job(factory: sessionmaker[Session], inspection_id: str) -> No
         try:
             inspection = session.get(models.Inspection, inspection_id)
             expected = [expected_item_schema(r) for r in list_expected_items(session, inspection.design_revision_id)]
+            if not expected and inspection.design_revision_id:
+                revision = session.get(models.DesignRevision, inspection.design_revision_id)
+                if revision and revision.drawing_file_id:
+                    from backend.app.config import get_settings
+                    from backend.app.services.storage import find_upload
+                    from backend.app.api.cabinets import replace_from_submission
+                    found_dwg = find_upload(get_settings().upload_dir, revision.drawing_file_id)
+                    if found_dwg:
+                        try:
+                            from ml.drawing.parse_drawing import to_contract
+                            parsed = to_contract(Path(found_dwg[0]))
+                            submission = schemas.ExpectedItemsSubmission(
+                                contract_version=parsed.get("contract_version") or schemas.CONTRACT_VERSION,
+                                drawing_file_sha256=parsed.get("drawing_file_sha256"),
+                                parser_version=parsed.get("parser_version"),
+                                items=[schemas.ExpectedItem(**{k: v for k, v in item.items() if k in {
+                                    "tag", "part_number", "description", "quantity", "rating", "source_page", "layout"}})
+                                    for item in parsed.get("items") or []],
+                            )
+                            replace_from_submission(session, revision.id, submission)
+                            session.commit()
+                            expected = [expected_item_schema(r) for r in list_expected_items(session, revision.id)]
+                        except Exception as dwg_err:
+                            log.warning("Dynamic drawing parsing on run failed: %s", dwg_err)
             _run_detector_on_images(session, inspection_id)
             _run_zero_shot_on_images(session, inspection_id)
             _run_ocr_on_images(session, inspection_id, [e.tag for e in expected])
@@ -462,3 +498,113 @@ def run_inspection_job(factory: sessionmaker[Session], inspection_id: str) -> No
             session.execute(update(models.Inspection).where(models.Inspection.id == inspection_id)
                             .values(state="failed", error=message))
             session.commit()
+
+
+# ---------- Analytics (Contract D) ----------
+def compute_analytics(
+    session: Session, from_date: Optional[str] = None, to_date: Optional[str] = None
+) -> schemas.AnalyticsOut:
+    query = select(models.Inspection).where(models.Inspection.state == "done")
+
+    if from_date:
+        try:
+            from_dt = datetime.fromisoformat(from_date)
+            if len(from_date) <= 10:
+                from_dt = from_dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+            elif from_dt.tzinfo is None:
+                from_dt = from_dt.replace(tzinfo=timezone.utc)
+            query = query.where(models.Inspection.created_at >= from_dt)
+        except Exception:
+            pass
+
+    if to_date:
+        try:
+            to_dt = datetime.fromisoformat(to_date)
+            if len(to_date) <= 10:
+                to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+            elif to_dt.tzinfo is None:
+                to_dt = to_dt.replace(tzinfo=timezone.utc)
+            query = query.where(models.Inspection.created_at <= to_dt)
+        except Exception:
+            pass
+
+    inspections = list(session.scalars(query.order_by(models.Inspection.created_at)).all())
+    total_inspections = len(inspections)
+
+    overall = {"pass": 0, "review_required": 0, "mismatch_detected": 0}
+    findings_by_type = {
+        "missing": 0,
+        "unexpected": 0,
+        "rating_mismatch": 0,
+        "order_changed": 0,
+        "type_mismatch": 0,
+    }
+    per_day_map: dict[str, dict[str, int]] = {}
+
+    for insp in inspections:
+        st = current_overall_status(session, insp) or insp.overall_status or "review_required"
+        overall[st] = overall.get(st, 0) + 1
+
+        d_str = insp.created_at.strftime("%Y-%m-%d") if insp.created_at else "unknown"
+        if d_str not in per_day_map:
+            per_day_map[d_str] = {"inspections": 0, "mismatch_detected": 0}
+        per_day_map[d_str]["inspections"] += 1
+        if st == "mismatch_detected":
+            per_day_map[d_str]["mismatch_detected"] += 1
+
+    insp_ids = [i.id for i in inspections]
+    findings: list[models.Finding] = []
+    if insp_ids:
+        findings = list(session.scalars(select(models.Finding).where(models.Finding.inspection_id.in_(insp_ids))).all())
+
+    for f in findings:
+        findings_by_type[f.type] = findings_by_type.get(f.type, 0) + 1
+
+    tag_counts: collections.Counter[str] = collections.Counter()
+    for f in findings:
+        if f.tag and f.status in ("potential_mismatch", "needs_review", "inconclusive"):
+            tag_counts[f.tag] += 1
+
+    top_flagged_tags = [
+        schemas.TopFlaggedTag(tag=tag, count=cnt)
+        for tag, cnt in tag_counts.most_common(10)
+    ]
+
+    f_ids = [f.id for f in findings]
+    latest_review: dict[str, str] = {}
+    if f_ids:
+        events = list(
+            session.scalars(
+                select(models.ReviewEvent)
+                .where(models.ReviewEvent.finding_id.in_(f_ids))
+                .order_by(models.ReviewEvent.id)
+            ).all()
+        )
+        for ev in events:
+            latest_review[ev.finding_id] = ev.decision
+
+    confirmed = sum(1 for d in latest_review.values() if d == "confirmed_by_reviewer")
+    rejected = sum(1 for d in latest_review.values() if d == "rejected_by_reviewer")
+    pending = sum(
+        1 for f in findings if f.id not in latest_review and f.status in ("potential_mismatch", "needs_review")
+    )
+
+    review_outcomes = {
+        "confirmed_by_reviewer": confirmed,
+        "rejected_by_reviewer": rejected,
+        "pending": pending,
+    }
+
+    per_day = [
+        schemas.PerDayAnalytics(date=d, inspections=v["inspections"], mismatch_detected=v["mismatch_detected"])
+        for d, v in sorted(per_day_map.items())
+    ]
+
+    return schemas.AnalyticsOut(
+        inspections=total_inspections,
+        overall=overall,
+        findings_by_type=findings_by_type,
+        top_flagged_tags=top_flagged_tags,
+        review_outcomes=review_outcomes,
+        per_day=per_day,
+    )

@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Tag,
 } from 'lucide-react';
-import { getAnalytics, syntheticData } from '../api.js';
+import { getAnalytics } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import SyntheticBanner from '../components/SyntheticBanner.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
@@ -29,11 +29,11 @@ export default function Analytics() {
     try {
       const res = await getAnalytics(fromDate, toDate);
       setData(res);
-      setIsSynthetic(res === syntheticData.analytics);
+      setIsSynthetic(false);
     } catch (err) {
       setError(err.message || 'Could not load analytics from server.');
-      setData(syntheticData.analytics);
-      setIsSynthetic(true);
+      setData(null);
+      setIsSynthetic(false);
     } finally {
       setLoading(false);
     }
@@ -101,6 +101,15 @@ export default function Analytics() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="panel" style={{ borderLeft: '4px solid var(--color-status-mismatch)', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <AlertTriangle size={18} color="var(--color-status-mismatch)" />
+            <span style={{ fontSize: '13px', color: 'var(--color-text-main)' }}>{error}</span>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div>

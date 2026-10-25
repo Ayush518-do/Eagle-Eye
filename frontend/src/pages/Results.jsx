@@ -20,6 +20,8 @@ import {
 import {
   API_URL,
   getInspection,
+  getExpectedItems,
+  getInspectionObservations,
   reviewFinding,
   requestReinspection,
   syntheticData,
@@ -31,6 +33,7 @@ import {
   visualCompareImages,
   setCabinetReferenceImage,
   clearCabinetReferenceImage,
+  getFitFeasibility,
 } from '../api.js';
 import { Star } from 'lucide-react';
 import ImageWithBoxes from '../components/ImageWithBoxes.jsx';
@@ -40,6 +43,7 @@ import Modal from '../components/Modal.jsx';
 import { SkeletonCard, SkeletonRow } from '../components/Skeleton.jsx';
 import ArrangementSection from '../components/ArrangementSection.jsx';
 import AlignmentModal from '../components/AlignmentModal.jsx';
+import FitFeasibilityPanel from '../components/FitFeasibilityPanel.jsx';
 
 export default function Results() {
   const { inspectionId } = useParams();
@@ -50,6 +54,36 @@ export default function Results() {
   const [data, setData] = useState(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedFindingId, setSelectedFindingId] = useState(null);
+  const [activeDetailTab, setActiveDetailTab] = useState('bom'); // 'bom' | 'observations' | 'findings'
+  const [expectedItems, setExpectedItems] = useState([]);
+  const [observations, setObservations] = useState([]);
+
+  const effectiveExpectedItems = useMemo(
+    () => (expectedItems.length > 0 ? expectedItems : data?.expected_items || []),
+    [expectedItems, data?.expected_items]
+  );
+  const effectiveObservations = useMemo(
+    () => (observations.length > 0 ? observations : data?.observations || []),
+    [observations, data?.observations]
+  );
+
+  // Format rating helper
+  const formatRating = (rating) => {
+    if (!rating) return '—';
+    if (typeof rating === 'string') return rating;
+    if (rating.raw) return rating.raw;
+    const parts = [];
+    if (rating.current_a) parts.push(`${rating.current_a}A`);
+    if (rating.voltage_v) parts.push(`${rating.voltage_v}V`);
+    if (rating.poles) parts.push(`${rating.poles}P`);
+    if (rating.curve) parts.push(`Curve ${rating.curve}`);
+    return parts.length > 0 ? parts.join(' ') : '—';
+  };
+
+  // Fit Feasibility State
+  const [fitReport, setFitReport] = useState(null);
+  const [loadingFitReport, setLoadingFitReport] = useState(false);
+  const [fitReportError, setFitReportError] = useState(null);
 
   // Filters
   const [typeFilter, setTypeFilter] = useState('all');
@@ -80,12 +114,15 @@ export default function Results() {
     try {
       if (referenceImage?.image_id === imageId) {
         await clearCabinetReferenceImage(data.cabinet_id);
+        setActionFeedback({ type: 'success', message: 'Reference photo unmarked.' });
       } else {
         await setCabinetReferenceImage(data.cabinet_id, imageId);
+        setActionFeedback({ type: 'success', message: `Photo ${imageId} set as approved baseline reference.` });
       }
+      setCompareResultByImage({});
       await loadInspection();
     } catch (err) {
-      setActionFeedback(`Could not update reference photo: ${err.message}`);
+      setActionFeedback({ type: 'error', message: `Could not update reference photo: ${err.message}` });
     }
   };
 
@@ -100,6 +137,24 @@ export default function Results() {
       if (res?.findings?.length > 0) {
         setSelectedFindingId(res.findings[0].finding_id);
       }
+
+      // Fetch Contract A BOM expected items
+      if (res?.design_revision_internal_id) {
+        getExpectedItems(res.design_revision_internal_id)
+          .then((bom) => setExpectedItems(bom?.items || []))
+          .catch((e) => console.warn('Could not fetch expected items:', e));
+      }
+
+      // Fetch Contract B observations
+      getInspectionObservations(inspectionId)
+        .then((imageObsList) => {
+          const allObs = [];
+          (imageObsList || []).forEach((io) => {
+            (io.observations || []).forEach((o) => allObs.push({ ...o, image_id: io.image_id }));
+          });
+          setObservations(allObs);
+        })
+        .catch((e) => console.warn('Could not fetch observations:', e));
     } catch (err) {
       // Only fall back to synthetic for the explicit demo IDs; otherwise show the real error state.
       setError(err.message || 'Inspection could not be retrieved.');
@@ -120,13 +175,74 @@ export default function Results() {
     loadInspection();
   }, [inspectionId]);
 
+  // Poll while background inspection pipeline (RF-DETR, OWLv2, RapidOCR) is executing
+  useEffect(() => {
+    if (data?.state === 'running' || data?.state === 'queued') {
+      const interval = setInterval(async () => {
+        try {
+          const res = await getInspection(inspectionId);
+          setData(res);
+          if (res?.state !== 'running' && res?.state !== 'queued') {
+            clearInterval(interval);
+            if (res?.findings?.length > 0 && !selectedFindingId) {
+              setSelectedFindingId(res.findings[0].finding_id);
+            }
+            // Re-fetch observations after pipeline run completes
+            getInspectionObservations(inspectionId)
+              .then((imageObsList) => {
+                const allObs = [];
+                (imageObsList || []).forEach((io) => {
+                  (io.observations || []).forEach((o) => allObs.push({ ...o, image_id: io.image_id }));
+                });
+                setObservations(allObs);
+              })
+              .catch(() => {});
+          }
+        } catch {
+          // ignore transient poll error
+        }
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [data?.state, inspectionId, selectedFindingId]);
+
+  // Load Fit Feasibility for currently selected finding
+  useEffect(() => {
+    if (!selectedFindingId) {
+      setFitReport(null);
+      return;
+    }
+    let isCurrent = true;
+    setLoadingFitReport(true);
+    setFitReportError(null);
+    getFitFeasibility(data?.inspection_id || inspectionId, selectedFindingId)
+      .then((report) => {
+        if (isCurrent) setFitReport(report);
+      })
+      .catch((err) => {
+        if (isCurrent) setFitReportError(err.message || 'Could not evaluate fit feasibility.');
+      })
+      .finally(() => {
+        if (isCurrent) setLoadingFitReport(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedFindingId, data?.inspection_id, inspectionId]);
+
   // Normalize findings list
   const findings = useMemo(() => data?.findings || [], [data]);
 
   // Filter findings
   const filteredFindings = useMemo(() => {
     return findings.filter((f) => {
-      const matchesType = typeFilter === 'all' || f.type === typeFilter;
+      const matchesType =
+        typeFilter === 'all' ||
+        f.type === typeFilter ||
+        (typeFilter === 'missing' && (f.type === 'missing' || f.type === 'missing_component')) ||
+        (typeFilter === 'missing_component' && (f.type === 'missing' || f.type === 'missing_component')) ||
+        (typeFilter === 'unexpected' && (f.type === 'unexpected' || f.type === 'unexpected_component')) ||
+        (typeFilter === 'unexpected_component' && (f.type === 'unexpected' || f.type === 'unexpected_component'));
       const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
       return matchesType && matchesStatus;
     });
@@ -153,24 +269,34 @@ export default function Results() {
     }
   }, [referenceImage, activeImage, compareReferenceId]);
 
-  // Map findings into SVG bounding boxes for ImageWithBoxes
+  // Map findings and observations into SVG bounding boxes for ImageWithBoxes
   const boxes = useMemo(() => {
     const list = [];
-    for (const f of findings) {
-      let bbox = null;
-      let imgId = null;
+    const seenBoxes = new Set();
 
+    const addBox = (box) => {
+      if (!box.bbox || box.bbox.length < 4) return;
+      const key = `${Math.round(box.bbox[0])}_${Math.round(box.bbox[1])}_${Math.round(box.bbox[2])}_${Math.round(box.bbox[3])}`;
+      if (seenBoxes.has(key)) return;
+      seenBoxes.add(key);
+      list.push(box);
+    };
+
+    for (const f of findings) {
+      const tagLabel = f.observed_tag || f.expected_tag || f.tag || f.finding_id;
+
+      // 1. Primary observation bbox
+      let primaryBbox = null;
+      let primaryImgId = null;
       if (f.observation?.bbox) {
-        bbox = f.observation.bbox;
-        imgId = f.observation.image_id;
+        primaryBbox = f.observation.bbox;
+        primaryImgId = f.observation.image_id;
       } else if (f.evidence && f.evidence.length > 0 && f.evidence[0].bbox) {
-        bbox = f.evidence[0].bbox;
-        imgId = f.evidence[0].image_id;
+        primaryBbox = f.evidence[0].bbox;
+        primaryImgId = f.evidence[0].image_id;
       }
 
-      // Check if this box belongs to the active image
-      if (bbox && (!imgId || imgId === activeImage.image_id || data?.images?.length <= 1)) {
-        // Derive class
+      if (primaryBbox && (!primaryImgId || primaryImgId === activeImage.image_id || data?.images?.length <= 1)) {
         let className = f.observation?.class_name || f.component_type;
         if (!className) {
           const tag = (f.expected_tag || f.observed_tag || f.tag || '').toUpperCase();
@@ -180,35 +306,106 @@ export default function Results() {
           else className = 'mcb';
         }
 
-        list.push({
+        let boxLabel = tagLabel;
+        if (f.type === 'rating_mismatch') {
+          boxLabel = `WRONG RATING: ${tagLabel}`;
+        } else if (f.status === 'verified' || f.type === 'verified') {
+          boxLabel = `VERIFIED: ${tagLabel}`;
+        } else if (f.type === 'unexpected' || f.type === 'unexpected_component') {
+          boxLabel = `UNEXPECTED: ${tagLabel}`;
+        }
+
+        addBox({
           id: f.finding_id,
-          bbox,
-          label: f.observed_tag || f.expected_tag || f.tag || f.finding_id,
+          bbox: primaryBbox,
+          label: boxLabel,
           className,
           status: f.status,
-          sources: f.sources,
+          issue_type: f.type,
+          sources: f.sources || ['detector'],
           confidence: f.observation?.detector_confidence ?? f.detector_confidence,
           ocr_confidence: f.observation?.ocr_confidence ?? f.ocr_confidence,
         });
       }
+
+      // 2. All secondary evidence bboxes (e.g. OCR text labels, tag labels)
+      if (f.evidence && Array.isArray(f.evidence)) {
+        f.evidence.forEach((ev, evIdx) => {
+          if (!ev?.bbox) return;
+          const evImgId = ev.image_id;
+          if (!evImgId || evImgId === activeImage.image_id || data?.images?.length <= 1) {
+            let className = 'mcb';
+            let label = tagLabel;
+            if (ev.source === 'ocr') {
+              label = ev.text ? `OCR: ${ev.text}` : `[TAG] ${tagLabel}`;
+            } else if (ev.source === 'zero_shot') {
+              label = `ZERO-SHOT: ${tagLabel}`;
+              className = 'power_supply';
+            } else {
+              label = f.status === 'verified' ? `VERIFIED: ${tagLabel}` : tagLabel;
+            }
+
+            addBox({
+              id: `${f.finding_id}-ev-${evIdx}`,
+              bbox: ev.bbox,
+              label,
+              className,
+              status: f.status,
+              issue_type: f.type,
+              sources: [ev.source || 'detector'],
+              confidence: f.detector_confidence,
+              ocr_confidence: f.ocr_confidence,
+            });
+          }
+        });
+      }
     }
+
+    // 3. Raw detections from RF-DETR / OWLv2 / RapidOCR on activeImage that have not been assigned to a finding
+    if (effectiveObservations && Array.isArray(effectiveObservations)) {
+      effectiveObservations.forEach((obs) => {
+        if (!obs?.bbox) return;
+        if (!obs.image_id || obs.image_id === activeImage.image_id || data?.images?.length <= 1) {
+          const className = obs.class_name || (obs.kind === 'tag_label' ? 'tag_label' : 'mcb');
+          const label = obs.text
+            ? `${obs.text}`
+            : obs.class_name
+            ? `${obs.class_name.toUpperCase()}`
+            : `DET ${obs.observation_id}`;
+
+          addBox({
+            id: obs.observation_id,
+            bbox: obs.bbox,
+            label,
+            className,
+            status: 'detected',
+            issue_type: obs.kind,
+            sources: [obs.source],
+            confidence: obs.confidence,
+            ocr_confidence: obs.text_confidence,
+          });
+        }
+      });
+    }
+
     // Append visual-compare change regions (if any) for the active image.
     const compare = compareResultByImage[activeImage.image_id];
     if (compare?.diagnostic === 'ok' && compare.regions?.length) {
       compare.regions.forEach((reg, i) => {
-        list.push({
+        addBox({
           id: `CHG-${activeImage.image_id}-${i}`,
           bbox: reg.bbox,
           label: `CHG ${(reg.change_score * 100).toFixed(0)}%`,
           className: 'change_region',
           status: 'needs_review',
+          issue_type: 'change_region',
           sources: ['visual_compare'],
           confidence: reg.change_score,
         });
       });
     }
     return list;
-  }, [findings, activeImage, data, compareResultByImage]);
+  }, [findings, activeImage, data, compareResultByImage, effectiveObservations]);
 
   // Missing components expected positions (§3.4, contract E)
   const missingExpectedBoxes = useMemo(() => {
@@ -219,6 +416,7 @@ export default function Results() {
           (f.expected_bbox || f.observation?.expected_bbox)
       )
       .map((f) => ({
+        id: f.finding_id,
         tag: f.expected_tag || f.tag || f.finding_id,
         expected_bbox: f.expected_bbox || f.observation?.expected_bbox,
         status: f.status,
@@ -449,19 +647,29 @@ export default function Results() {
           <p className="page-desc">
             Enclosure: <strong>{data?.cabinet_name || cabinetId}</strong> · Revision: <span className="mono">{data?.design_revision_id || 'REV-A'}</span> · Scanned {new Date(data?.created_at || Date.now()).toLocaleString()}
           </p>
-          {/* Counts summary — tiny chips so the operator sees the outcome without scrolling */}
-          {data?.counts && Object.keys(data.counts).length > 0 && (
-            <div className="counts-pills" aria-label="Finding counts">
-              {['verified', 'potential_mismatch', 'needs_review', 'inconclusive', 'confirmed_by_reviewer', 'rejected_by_reviewer'].map((k) => (
-                data.counts[k] ? (
-                  <span key={k} className={`counts-pill cp-${k}`}>
-                    <strong>{data.counts[k]}</strong>
-                    <span>{k.replace(/_/g, ' ')}</span>
-                  </span>
-                ) : null
-              ))}
-            </div>
-          )}
+          {/* Counts summary — comprehensive status & inspection statistics */}
+          <div className="counts-pills" aria-label="Inspection counts" style={{ marginTop: '8px' }}>
+            {effectiveExpectedItems.length > 0 && (
+              <span className="counts-pill" style={{ background: 'var(--color-blue-50)', color: 'var(--color-navy)', borderColor: 'var(--color-blue-100)' }}>
+                <strong>{effectiveExpectedItems.length}</strong>
+                <span>Expected BOM</span>
+              </span>
+            )}
+            {effectiveObservations.length > 0 && (
+              <span className="counts-pill" style={{ background: '#f6f8fa', color: '#24292f', borderColor: '#d0d7de' }}>
+                <strong>{effectiveObservations.length}</strong>
+                <span>Visual Detections</span>
+              </span>
+            )}
+            {['verified', 'potential_mismatch', 'needs_review', 'inconclusive', 'confirmed_by_reviewer', 'rejected_by_reviewer'].map((k) => (
+              data?.counts?.[k] ? (
+                <span key={k} className={`counts-pill cp-${k}`}>
+                  <strong>{data.counts[k]}</strong>
+                  <span>{k.replace(/_/g, ' ')}</span>
+                </span>
+              ) : null
+            ))}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -511,9 +719,102 @@ export default function Results() {
 
       {/* Action feedback message */}
       {actionFeedback && (
-        <div className="notice" style={{ backgroundColor: 'var(--color-status-approved-bg)', borderColor: '#a3e3af', color: 'var(--color-status-approved)' }}>
-          <CheckCircle2 size={16} />
-          <div>{actionFeedback}</div>
+        <div
+          className="notice"
+          style={{
+            backgroundColor:
+              typeof actionFeedback === 'object' && actionFeedback.type === 'error'
+                ? '#ffebe9'
+                : 'var(--color-status-approved-bg)',
+            borderColor:
+              typeof actionFeedback === 'object' && actionFeedback.type === 'error'
+                ? '#ff8182'
+                : '#a3e3af',
+            color:
+              typeof actionFeedback === 'object' && actionFeedback.type === 'error'
+                ? '#cf222e'
+                : 'var(--color-status-approved)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {typeof actionFeedback === 'object' && actionFeedback.type === 'error' ? (
+              <XCircle size={16} color="#cf222e" />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
+            <div>{typeof actionFeedback === 'object' ? actionFeedback.message : actionFeedback}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionFeedback(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              padding: '2px 6px',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}
+            title="Dismiss message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Live Pipeline Status Banner */}
+      {(data?.state === 'running' || data?.state === 'queued') && (
+        <div
+          className="notice"
+          style={{
+            backgroundColor: '#ddf4ff',
+            borderColor: '#54aeff',
+            color: '#0969da',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+            marginBottom: '16px',
+            borderRadius: '6px',
+          }}
+        >
+          <RotateCcw className="spin" size={18} />
+          <div>
+            <strong>ML Inspection in progress ({data.state})…</strong>
+            <div style={{ fontSize: '12px', marginTop: '2px', color: '#0550ae' }}>
+              Running trained RF-DETR object detector, OWLv2 zero-shot, and RapidOCR on the uploaded cabinet photograph(s). Findings and bounding boxes will refresh automatically.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data?.state === 'failed' && (
+        <div
+          className="notice"
+          style={{
+            backgroundColor: '#ffebe9',
+            borderColor: '#ff8182',
+            color: '#cf222e',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+            marginBottom: '16px',
+            borderRadius: '6px',
+          }}
+        >
+          <XCircle size={18} />
+          <div>
+            <strong>Inspection pipeline failed</strong>
+            <div style={{ fontSize: '12px', marginTop: '2px' }}>
+              {data.error || 'The model detector or OCR pipeline reported a failure. Check server logs for details.'}
+            </div>
+          </div>
         </div>
       )}
 
@@ -663,8 +964,8 @@ export default function Results() {
               >
                 <option value="all">All Discrepancy Types</option>
                 <option value="rating_mismatch">Rating Mismatch</option>
-                <option value="missing_component">Missing Component</option>
-                <option value="unexpected_component">Unexpected Component</option>
+                <option value="missing">Missing Component</option>
+                <option value="unexpected">Unexpected Component</option>
                 <option value="uncertain">Uncertain Reading</option>
                 <option value="verified">Verified Correct</option>
               </select>
@@ -716,11 +1017,58 @@ export default function Results() {
                     }}
                   >
                     <div className="finding-header">
-                      <div className="finding-tags">
+                      <div className="finding-tags" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <span className="finding-tag">{tagLabel}</span>
                         <span className="mono" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
                           {finding.finding_id}
                         </span>
+                        {finding.type === 'missing' || finding.type === 'missing_component' ? (
+                          finding.expected_bbox || finding.observation?.expected_bbox ? (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: '#e1f0ff',
+                                color: '#0969da',
+                                border: '1px solid #b6d3f2',
+                                fontWeight: 600,
+                              }}
+                              title="Component expected location mapped from schematic layout and homography"
+                            >
+                              Expected Position Mapped
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: '#fff8c5',
+                                color: '#9a6700',
+                                border: '1px solid #eed07d',
+                                fontWeight: 600,
+                              }}
+                              title="Corner alignment required to project drawing coordinates to photo pixels"
+                            >
+                              POSITION UNRESOLVED (Corner Alignment Required)
+                            </span>
+                          )
+                        ) : finding.observation?.bbox || (finding.evidence && finding.evidence[0]?.bbox) ? (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: '#f6f8fa',
+                              color: '#57606a',
+                              border: '1px solid #d0d7de',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Observed Position
+                          </span>
+                        ) : null}
                       </div>
                       <StatusBadge status={finding.status} />
                     </div>
@@ -871,7 +1219,332 @@ export default function Results() {
               )}
             </div>
           )}
+
+          {/* Fit Feasibility & Replacement Options for Active Finding */}
+          {selectedFinding && (
+            <FitFeasibilityPanel
+              report={fitReport}
+              loading={loadingFitReport}
+              error={fitReportError}
+              tag={selectedFinding.observed_tag || selectedFinding.expected_tag || selectedFinding.tag || selectedFinding.finding_id}
+            />
+          )}
       </div>
+      </div>
+
+      {/* Tabbed Detailed Data Inspector (Contract A, B, and C) */}
+      <div className="panel" style={{ marginTop: '24px', backgroundColor: '#ffffff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 className="panel-title" style={{ fontSize: '18px', color: 'var(--color-navy)' }}>
+              Detailed Inspection Data Inspector
+            </h2>
+            <p className="page-desc" style={{ marginTop: '2px' }}>
+              Inspect the extracted drawing components (Contract A), visual AI detections (Contract B), and comparison verification matrix (Contract C).
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', background: 'var(--color-surface-subtle)', padding: '4px', borderRadius: '6px', border: '1px solid var(--color-border-subtle)' }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeDetailTab === 'bom' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveDetailTab('bom')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <FileText size={13} />
+              <span>Extracted Drawing BOM ({effectiveExpectedItems.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeDetailTab === 'observations' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveDetailTab('observations')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Crosshair size={13} />
+              <span>Observed Visual Detections ({effectiveObservations.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeDetailTab === 'findings' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveDetailTab('findings')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Layers size={13} />
+              <span>Comparison Findings Matrix ({findings.length})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TAB 1: Extracted Drawing BOM (Contract A) */}
+        {activeDetailTab === 'bom' && (
+          <div>
+            {effectiveExpectedItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--color-text-muted)' }}>
+                No expected BOM items available for this design revision.
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Components</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-navy)' }}>{effectiveExpectedItems.length}</div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Ratings Parsed</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-approved)' }}>
+                      {effectiveExpectedItems.filter((it) => it.rating && (it.rating.current_a || it.rating.voltage_v || it.rating.raw)).length}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Distinct Tags</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-navy)' }}>
+                      {new Set(effectiveExpectedItems.map((it) => it.tag).filter(Boolean)).size}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Mapped Layouts</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#0969da' }}>
+                      {effectiveExpectedItems.filter((it) => it.layout?.bbox).length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="table-container" style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '80px' }}>Tag</th>
+                        <th>Part Number</th>
+                        <th>Description / Type</th>
+                        <th>Expected Rating</th>
+                        <th style={{ textAlign: 'center', width: '60px' }}>Qty</th>
+                        <th>Drawing Page</th>
+                        <th>Schematic Coordinates</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {effectiveExpectedItems.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>
+                            <span className="mono" style={{ fontWeight: 700, color: 'var(--color-navy)', background: 'var(--color-blue-50)', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
+                              {item.tag || `[Item ${idx + 1}]`}
+                            </span>
+                          </td>
+                          <td className="mono" style={{ fontSize: '12px' }}>
+                            {item.part_number || '—'}
+                          </td>
+                          <td>
+                            <span style={{ fontWeight: 500 }}>{item.description || 'Component'}</span>
+                          </td>
+                          <td>
+                            <span className="mono" style={{ fontWeight: 600, color: item.rating ? 'var(--color-status-approved)' : 'var(--color-text-muted)', fontSize: '12px' }}>
+                              {formatRating(item.rating)}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                            {item.quantity ?? 1}
+                          </td>
+                          <td style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                            {item.source_page ? `Page ${item.source_page}` : item.layout?.page ? `Page ${item.layout.page}` : '—'}
+                          </td>
+                          <td className="mono" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                            {item.layout?.bbox ? `[${item.layout.bbox.map((v) => Math.round(v)).join(', ')}]` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: Observed Visual Detections (Contract B) */}
+        {activeDetailTab === 'observations' && (
+          <div>
+            {effectiveObservations.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--color-text-muted)' }}>
+                No visual observations recorded for this inspection yet.
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Detections</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-navy)' }}>{effectiveObservations.length}</div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>RF-DETR (Detector)</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-status-approved)' }}>
+                      {effectiveObservations.filter((o) => o.source === 'detector').length}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>OWLv2 (Zero-shot)</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#0969da' }}>
+                      {effectiveObservations.filter((o) => o.source === 'zero_shot').length}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>RapidOCR (Text)</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-navy)' }}>
+                      {effectiveObservations.filter((o) => o.source === 'ocr').length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="table-container" style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Observation ID</th>
+                        <th>Source</th>
+                        <th>Kind</th>
+                        <th>Class / Component</th>
+                        <th>Detected Value / Text</th>
+                        <th style={{ textAlign: 'center' }}>Detector Conf</th>
+                        <th style={{ textAlign: 'center' }}>OCR Conf</th>
+                        <th>Bounding Box [x1, y1, x2, y2]</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {effectiveObservations.map((obs, idx) => (
+                        <tr key={idx}>
+                          <td className="mono" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-navy)' }}>
+                            {obs.observation_id}
+                          </td>
+                          <td>
+                            <span className={`source-badge source-${obs.source}`}>
+                              {obs.source === 'zero_shot' ? 'Zero-shot' : obs.source === 'detector' ? 'RF-DETR' : obs.source === 'ocr' ? 'RapidOCR' : obs.source}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '12px', textTransform: 'capitalize' }}>
+                            {obs.kind.replace('_', ' ')}
+                          </td>
+                          <td>
+                            <strong style={{ fontSize: '12px' }}>{obs.class_name}</strong>
+                          </td>
+                          <td>
+                            {obs.text ? (
+                              <span className="mono" style={{ fontWeight: 600, color: 'var(--color-navy)', background: '#f6f8fa', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
+                                {obs.text}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'center', fontSize: '12px', fontWeight: 600 }}>
+                            {obs.confidence != null ? `${(obs.confidence * 100).toFixed(0)}%` : '—'}
+                          </td>
+                          <td style={{ textAlign: 'center', fontSize: '12px', fontWeight: 600 }}>
+                            {obs.text_confidence != null ? `${(obs.text_confidence * 100).toFixed(0)}%` : '—'}
+                          </td>
+                          <td className="mono" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                            {obs.bbox ? `[${obs.bbox.map((v) => Math.round(v)).join(', ')}]` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: Comparison Findings Matrix (Contract C) */}
+        {activeDetailTab === 'findings' && (
+          <div>
+            {findings.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--color-text-muted)' }}>
+                No findings generated for this inspection.
+              </div>
+            ) : (
+              <div className="table-container" style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Finding ID</th>
+                      <th>Tag</th>
+                      <th>Issue / Type</th>
+                      <th>Expected Value</th>
+                      <th>Observed Reading</th>
+                      <th style={{ textAlign: 'center' }}>Status</th>
+                      <th style={{ textAlign: 'center' }}>Evidence Score</th>
+                      <th>Sources</th>
+                      <th>Reason</th>
+                      <th style={{ textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {findings.map((f) => {
+                      const tagLabel = f.observed_tag || f.expected_tag || f.tag || f.finding_id;
+                      const isSelected = f.finding_id === selectedFindingId;
+                      return (
+                        <tr
+                          key={f.finding_id}
+                          style={{
+                            backgroundColor: isSelected ? 'var(--color-blue-50)' : undefined,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setSelectedFindingId(f.finding_id)}
+                        >
+                          <td className="mono" style={{ fontSize: '12px', fontWeight: 600 }}>
+                            {f.finding_id}
+                          </td>
+                          <td>
+                            <span className="mono" style={{ fontWeight: 700, color: 'var(--color-navy)', background: 'var(--color-blue-50)', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
+                              {tagLabel}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '12px', textTransform: 'capitalize' }}>
+                            {(f.type || '').replace(/_/g, ' ')}
+                          </td>
+                          <td className="mono" style={{ fontSize: '12px', fontWeight: 500 }}>
+                            {f.expected_value || '—'}
+                          </td>
+                          <td className="mono" style={{ fontSize: '12px', fontWeight: 600, color: f.type === 'rating_mismatch' ? 'var(--color-status-mismatch)' : 'inherit' }}>
+                            {f.observed_text || f.observed_rating || '—'}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <StatusBadge status={f.status} />
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: 600, fontSize: '12px' }}>
+                            {f.evidence_score != null ? `${(f.evidence_score * 100).toFixed(0)}%` : '—'}
+                          </td>
+                          <td>
+                            <div className="source-badges" style={{ gap: '4px' }}>
+                              {(f.sources && f.sources.length > 0 ? f.sources : ['detector']).map((src) => (
+                                <span key={src} className={`source-badge source-${src}`} style={{ fontSize: '10px', padding: '1px 5px' }}>
+                                  {src === 'zero_shot' ? 'Zero-shot' : src}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ fontSize: '12px', color: 'var(--color-text-muted)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.reason || ''}>
+                            {f.reason || '—'}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFindingId(f.finding_id);
+                              }}
+                            >
+                              Inspect
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Component Arrangement / Sequence Section */}

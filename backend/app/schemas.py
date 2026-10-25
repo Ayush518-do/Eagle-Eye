@@ -5,7 +5,7 @@ Contract C: backend -> frontend inspection result.
 If you change a model here, update docs/contracts.md in the same pull request.
 """
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -134,6 +134,10 @@ OverallStatus = Literal["pass", "review_required", "mismatch_detected"]
 class Evidence(BaseModel):
     image_id: str
     bbox: BBox
+    # Which observation source this evidence came from. 'ocr' = the tag read, 'detector' =
+    # the trained component detector box, 'zero_shot' = the OWLv2 box, 'manual' = reviewer.
+    # Optional for backwards compatibility; older evidence rows don't carry it.
+    source: Optional[str] = Field(default=None, exclude=True)
     _bbox = field_validator("bbox")(_check_bbox)
 
 
@@ -329,3 +333,52 @@ class UploadResult(BaseModel):
     content_type: str
     size_bytes: int
     sha256: str
+
+
+# ---------- Fit Feasibility ----------
+class CandidateAssessmentOut(BaseModel):
+    candidate_part_number: str
+    manufacturer: str
+    model_name: str
+    classification: str
+    reasons: list[str]
+    evaluated_constraints: dict[str, str]
+    reference_values: dict[str, Any]
+    measured_values: dict[str, Any]
+    uncertainty_notes: list[str]
+    safety_disclaimer: str
+
+
+class EmptyPositionFitReportOut(BaseModel):
+    finding_id: str
+    tag: str
+    component_type: str
+    expected_part_number: Optional[str] = None
+    slot_status: str
+    available_width_mm: Optional[float] = None
+    available_height_mm: Optional[float] = None
+    available_depth_mm: Optional[float] = None
+    mounting_type: str
+    scale_calibration: str
+    candidates: list[CandidateAssessmentOut]
+
+
+# ---------- Analytics (Contract D) ----------
+class TopFlaggedTag(BaseModel):
+    tag: str
+    count: int
+
+
+class PerDayAnalytics(BaseModel):
+    date: str
+    inspections: int
+    mismatch_detected: int
+
+
+class AnalyticsOut(BaseModel):
+    inspections: int
+    overall: dict[str, int]
+    findings_by_type: dict[str, int]
+    top_flagged_tags: list[TopFlaggedTag]
+    review_outcomes: dict[str, int]
+    per_day: list[PerDayAnalytics]

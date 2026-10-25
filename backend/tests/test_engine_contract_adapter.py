@@ -111,7 +111,7 @@ def test_contract_adapter_accepts_ml_detector_v03_output(monkeypatch, tmp_path):
     assert flags == {"cabinet": []}
 
 
-def test_contract_adapter_rejects_zero_shot_source_until_contract_supports_it(
+def test_contract_adapter_accepts_zero_shot_source_and_rejects_unsupported(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(engine, "check_photo", lambda path, thresholds: [])
@@ -133,9 +133,30 @@ def test_contract_adapter_rejects_zero_shot_source_until_contract_supports_it(
         ],
     }
 
+    findings, flags = engine.run_inspection_from_contracts(
+        _drawing(), {"cabinet": contract}, {"cabinet": photo}
+    )
+    assert findings[0].status == "inconclusive"
+    assert flags == {"cabinet": []}
+
+    contract_bad = {
+        "contract_version": "0.3",
+        "image_id": "cabinet",
+        "image_size": [400, 300],
+        "observations": [
+            {
+                "observation_id": "BAD-001",
+                "source": "unsupported_source",
+                "kind": "component",
+                "class_name": "power_supply",
+                "bbox": [120, 80, 170, 180],
+                "confidence": 0.77,
+            }
+        ],
+    }
     with pytest.raises(ValueError, match="(?s)Invalid image contract.*source"):
         engine.run_inspection_from_contracts(
-            _drawing(), {"cabinet": contract}, {"cabinet": photo}
+            _drawing(), {"cabinet": contract_bad}, {"cabinet": photo}
         )
 
 

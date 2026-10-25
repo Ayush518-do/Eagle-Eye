@@ -1,7 +1,7 @@
 // All backend calls go through here. Base URL comes from VITE_API_URL.
 import syntheticData from './mocks/inspection.synthetic.json';
 
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
+export const API_URL = import.meta.env.VITE_API_URL || '';
 
 class ApiError extends Error {
   constructor(message, status = 0, isUnavailable = false) {
@@ -14,11 +14,13 @@ class ApiError extends Error {
 
 async function request(path, options = {}) {
   let response;
+  const targetUrl = API_URL ? `${API_URL}${path}` : path;
   try {
-    response = await fetch(`${API_URL}${path}`, options);
+    response = await fetch(targetUrl, options);
   } catch {
+    const backendHint = API_URL || 'http://127.0.0.1:8000';
     throw new ApiError(
-      `Cannot reach the backend server at ${API_URL}. Please ensure the API is running or switch to synthetic mode.`,
+      `Cannot reach the backend server at ${backendHint}. Ensure the API is running (start with: uvicorn backend.app.main:app --host 127.0.0.1 --port 8000).`,
       0,
       true
     );
@@ -94,6 +96,10 @@ export const parseDrawingForRevision = (revisionId) =>
     method: 'POST',
   });
 
+// Read back expected items (Contract A BOM) for a design revision.
+export const getExpectedItems = (revisionId) =>
+  request(`/api/design-revisions/${encodeURIComponent(revisionId)}/expected-items`);
+
 // Visual compare: SIFT + homography + per-pixel diff between an approved REFERENCE photo
 // and the current CANDIDATE photo. Returns regions-of-change in candidate pixel coordinates.
 export const visualCompareImages = (candidateImageId, referenceImageId) =>
@@ -135,6 +141,10 @@ export async function getInspection(inspectionId) {
   return request(`/api/inspections/${encodeURIComponent(inspectionId)}`);
 }
 
+// Read raw Contract B observations across all images for an inspection
+export const getInspectionObservations = (inspectionId) =>
+  request(`/api/inspections/${encodeURIComponent(inspectionId)}/observations`);
+
 // Reviews & Reinspections
 export const reviewFinding = (findingId, reviewPayload) =>
   request(`/api/findings/${encodeURIComponent(findingId)}/review`, {
@@ -149,6 +159,63 @@ export const requestReinspection = (inspectionId, notes = '') =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ notes }),
   });
+
+// Fit Feasibility & Replacement Assessment
+export async function getFitFeasibility(inspectionId, findingId) {
+  if (inspectionId === 'synthetic' || inspectionId?.includes('SYNTH')) {
+    return {
+      finding_id: findingId || 'F-004',
+      tag: 'IO21',
+      component_type: 'io_module',
+      expected_part_number: 'VE4001S2T2B1',
+      slot_status: 'unoccupied_verified',
+      available_width_mm: 36.0,
+      available_height_mm: 110.0,
+      available_depth_mm: 75.0,
+      mounting_type: 'DIN-rail 35mm',
+      scale_calibration: 'reference_drawing_bom',
+      candidates: [
+        {
+          candidate_part_number: 'VE4001S2T2B1',
+          manufacturer: 'Emerson',
+          model_name: 'DeltaV 16-Channel DI Card',
+          classification: 'Compatible',
+          reasons: ['Candidate satisfies all evaluated physical, mounting, and specification constraints.'],
+          evaluated_constraints: {
+            mounting: 'OK: DIN-rail 35mm',
+            width: 'OK: 36.0mm fits within available 36.0mm',
+            height: 'OK: 110.0mm within vertical envelope',
+            depth: 'OK: 75.0mm standard DIN clearance',
+          },
+          reference_values: { candidate_width_mm: 36.0, candidate_mounting: 'DIN-rail 35mm' },
+          measured_values: { available_width_mm: 36.0 },
+          uncertainty_notes: [],
+          safety_disclaimer:
+            'Physical fit feasibility check only. Physical fit does NOT imply electrical safety, thermal suitability, or protection coordination. Verify electrical specifications with a qualified engineer before installation.',
+        },
+        {
+          candidate_part_number: 'A9N2P16C',
+          manufacturer: 'Schneider Electric',
+          model_name: 'Acti9 C60H-DC',
+          classification: 'Potentially compatible',
+          reasons: ['Candidate fits mechanical envelope but has component type difference requiring engineering approval.'],
+          evaluated_constraints: {
+            mounting: 'OK: DIN-rail 35mm',
+            width: 'OK: 36.0mm fits within available 36.0mm',
+            depth: 'OK: standard clearance',
+            type: 'POTENTIAL_MISMATCH: Candidate is mcb; expected io_module',
+          },
+          reference_values: { candidate_width_mm: 36.0, candidate_mounting: 'DIN-rail 35mm' },
+          measured_values: { available_width_mm: 36.0 },
+          uncertainty_notes: ['Image uncalibrated: dimensions derived from reference drawing specifications.'],
+          safety_disclaimer:
+            'Physical fit feasibility check only. Physical fit does NOT imply electrical safety, thermal suitability, or protection coordination. Verify electrical specifications with a qualified engineer before installation.',
+        },
+      ],
+    };
+  }
+  return request(`/api/inspections/${encodeURIComponent(inspectionId)}/findings/${encodeURIComponent(findingId)}/fit-feasibility`);
+}
 
 // Quality Passport
 export async function getQualityPassport(cabinetId) {
@@ -192,14 +259,7 @@ export async function getAnalytics(from, to) {
   if (from) params.set('from', from);
   if (to) params.set('to', to);
   const query = params.toString() ? `?${params.toString()}` : '';
-  try {
-    return await request(`/api/analytics${query}`);
-  } catch (err) {
-    if (err.isUnavailable || err.status === 404) {
-      return syntheticData.analytics;
-    }
-    throw err;
-  }
+  return request(`/api/analytics${query}`);
 }
 
 // QR Traceability (§3.2)

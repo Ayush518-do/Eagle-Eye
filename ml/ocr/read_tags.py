@@ -86,6 +86,7 @@ def read_raw(image: Image.Image, tile: int = 1280, overlap: float = 0.25, rotati
     import numpy as np
     eng = _get_engine()
     out = []
+    seen_texts_rot0: set[str] = set()
     for x0, y0, x1, y1 in _tiles(image.width, image.height, tile, overlap):
         crop = image.crop((x0, y0, x1, y1))
         cw = crop.width
@@ -93,11 +94,15 @@ def read_raw(image: Image.Image, tile: int = 1280, overlap: float = 0.25, rotati
             im = crop.rotate(rot, expand=True) if rot else crop     # 90 = turned counter-clockwise
             res, _ = eng(np.array(im))
             for pts, text, score in res or []:
+                if rot != 0 and text in seen_texts_rot0:
+                    continue
+                if rot == 0:
+                    seen_texts_rot0.add(text)
                 if rot == 90:      # undo the turn: rotated (u, v) -> crop (cw - 1 - v, u)
                     pts = [(cw - 1 - v, u) for u, v in pts]
                 xs = [p[0] + x0 for p in pts]
                 ys = [p[1] + y0 for p in pts]
-                out.append({"text": text, "score": 0.0 if score is None else float(score),
+                out.append({"text": text, "score": None if score is None else float(score),
                             "rotation": rot, "bbox": [min(xs), min(ys), max(xs), max(ys)]})
     return out
 
@@ -105,38 +110,62 @@ def read_raw(image: Image.Image, tile: int = 1280, overlap: float = 0.25, rotati
 def merge_duplicates(obs: list[dict], iou_threshold: float = 0.3) -> list[dict]:
     """The same sticker read twice (overlapping tiles, both orientations): keep the best reading."""
     kept: list[dict] = []
-    for o in sorted(obs, key=lambda o: -o["score"]):
-        if not any(k["tag"] == o["tag"] and _iou(k["bbox"], o["bbox"]) > iou_threshold for k in kept):
+    for o in sorted(obs, key=lambda o: -(o["score"] if o.get("score") is not None else -1.0)):
+        if not any(k.get("tag") == o.get("tag") and k.get("raw") == o.get("raw") and _iou(k["bbox"], o["bbox"]) > iou_threshold for k in kept):
             kept.append(o)
     # A cut-off read of the same sticker ("DS2" where "DS21" was read at the same spot): keep the longer tag.
     return [o for o in kept
-            if not any(k is not o and k["tag"] != o["tag"] and k["tag"].startswith(o["tag"])
-                       and _iou(k["bbox"], o["bbox"]) > 0.5 for k in kept)]
+            if not any(k is not o and k.get("tag") and o.get("tag") and k["tag"] != o["tag"]
+                       and k["tag"].startswith(o["tag"]) and _iou(k["bbox"], o["bbox"]) > 0.5 for k in kept)]
 
 
 def find_tags(image: Image.Image, expected: Optional[Iterable[str]] = None, raw: Optional[list] = None,
               **kw) -> list[dict]:
     """Tag stickers in the photo. Pass `raw` (from read_raw) to avoid reading the photo twice."""
-    expected = [clean(t) for t in (expected or [])]
+    from backend.app.pipeline.rating_format import normalise_rating
+    expected_list = [clean(t) for t in (expected or [])]
     found = []
     for r in (raw if raw is not None else read_raw(image, **kw)):
-        if not is_standalone_tag(r["text"]):
+        text = r["text"]
+        # Wire sleeves ("CB11-4/PS11-N", "XG11-1/PS11-PE") mention tags but prove nothing.
+        if any(ch in text for ch in "/:"):
             continue
-        raw = clean(r["text"])
-        tag = raw
-        if expected:
-            m = match_tag(raw, expected)
-            # one-character corrections only when the lengths agree (avoids 'S1' -> 'DS1')
-            if not m.tag or (m.distance > 0 and len(m.tag) != len(raw)):
-                continue
-            tag = m.tag
-        found.append({**r, "tag": tag, "raw": r["text"]})
+
+        matched = match_tag(text, expected_list) if expected_list else None
+        if matched and matched.tag:
+            found.append({
+                **r,
+                "kind": "tag_label",
+                "class_name": "tag_label",
+                "tag": matched.tag,
+                "raw": text,
+            })
+            continue
+
+        rating = normalise_rating(text)
+        if rating is not None:
+            found.append({
+                **r,
+                "kind": "rating",
+                "class_name": "rating",
+                "tag": None,
+                "raw": text,
+            })
+            continue
+
+        found.append({
+            **r,
+            "kind": "tag_label",
+            "class_name": "tag_label",
+            "tag": text,
+            "raw": text,
+        })
     return merge_duplicates(found)
 
 
 def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_id: Optional[str] = None,
               **kw) -> dict:
-    """Contract B (kind='tag_label') for one photo."""
+    """Contract B (kind='tag_label' or 'rating') for one photo."""
     path = Path(image_path)
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     tags = find_tags(image, expected, **kw)
@@ -149,13 +178,13 @@ def read_tags(image_path: str, expected: Optional[Iterable[str]] = None, image_i
             {
                 "observation_id": f"OCR-{i:03d}",
                 "source": "ocr",
-                "kind": "tag_label",
-                "class_name": "tag_label",
-                "bbox": [round(v, 1) for v in t["bbox"]],
+                "kind": t.get("kind", "tag_label"),
+                "class_name": t.get("class_name", "tag_label"),
+                "bbox": [round(float(v), 1) for v in t["bbox"]],
                 "confidence": None,
                 "text": t["tag"],
                 "raw_text": t["raw"],
-                "text_confidence": round(t["score"], 4),
+                "text_confidence": None if t["score"] is None else round(float(t["score"]), 4),
                 "model": {"name": ENGINE_NAME, "version": None, "weights_sha256": None},
             }
             for i, t in enumerate(sorted(tags, key=lambda t: (t["bbox"][1], t["bbox"][0])), start=1)

@@ -1,15 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ZoomIn, ZoomOut, RotateCcw, Crosshair } from 'lucide-react';
 
+export const STATUS_COLORS = {
+  defect: '#cf222e',        // Red: confirmed mismatch or confirmed missing component
+  review: '#b26a00',        // Amber: uncertain, low-confidence, or review-required finding
+  verified: '#1a7f37',      // Green: verified component
+  ghost: '#0066b3',         // Blue: reference-position or ghost-overlay geometry
+  change_region: '#8250df', // Purple: visual compare change region
+  default: '#b26a00',
+};
+
 const CLASS_COLORS = {
-  mcb: '#cf222e',          // Breaker: Industrial Red
+  mcb: '#cf222e',
   breaker: '#cf222e',
-  power_supply: '#1f5eff', // Power Supply: Blue
+  power_supply: '#1f5eff',
   psu: '#1f5eff',
-  io_module: '#1a7f37',    // I/O Module: Forest Green
+  io_module: '#1a7f37',
   io: '#1a7f37',
-  change_region: '#8250df',// Visual-compare change region: Purple
-  default: '#f0a500',      // Default / Other: Amber
+  change_region: '#8250df',
+  default: '#b26a00',
 };
 
 export default function ImageWithBoxes({
@@ -39,6 +48,7 @@ export default function ImageWithBoxes({
   const [showTags, setShowTags] = useState(true);
   const [showComponents, setShowComponents] = useState(true);
   const [findingsOnly, setFindingsOnly] = useState(false);
+  const [showVerified, setShowVerified] = useState(true);
   const [showGhost, setShowGhost] = useState(true);
 
   // Tooltip state
@@ -147,21 +157,44 @@ export default function ImageWithBoxes({
     setHoveredBox(null);
   };
 
-  // Calculate box color based on class
+  // Calculate box color based on defect status convention
   const getBoxColor = (box) => {
     if (box.color) return box.color;
-    const cls = (box.className || box.class_name || '').toLowerCase();
-    return CLASS_COLORS[cls] || CLASS_COLORS.default;
+    if (box.isGhost || box.isExpectedPosition) return STATUS_COLORS.ghost;
+    if (box.className === 'change_region') return STATUS_COLORS.change_region;
+
+    const status = (box.status || '').toLowerCase();
+    const type = (box.issue_type || '').toLowerCase();
+
+    // Red: confirmed mismatch, rating mismatch, misplaced, or confirmed missing
+    if (
+      status === 'mismatch' ||
+      status === 'potential_mismatch' ||
+      status === 'rejected_by_reviewer' ||
+      type === 'rating_mismatch' ||
+      type === 'misplaced' ||
+      (type === 'missing' && status === 'confirmed_by_reviewer')
+    ) {
+      return STATUS_COLORS.defect;
+    }
+
+    // Green: verified component
+    if (status === 'verified' || status === 'pass' || (status === 'confirmed_by_reviewer' && type === 'verified')) {
+      return STATUS_COLORS.verified;
+    }
+
+    // Amber: uncertain, low-confidence, or review-required finding
+    return STATUS_COLORS.review;
   };
 
-  // Stroke style maps to the FIRST source on the box: detector = solid (fine-tuned,
-  // high confidence), zero_shot = long dash (pretrained-text-prompted), ocr = short
-  // dash (tag read), manual = thicker solid. Change regions already carry their own class.
+  // Stroke style maps to the FIRST source on the box: detector = solid (fine-tuned),
+  // zero_shot = long dash, ocr = short dash, missing / expected geometry = dashed envelope.
   const getStrokeDash = (box) => {
+    if (box.isGhost || box.isExpectedPosition || box.issue_type === 'missing') return '6,4';
     const src = (box.sources || [])[0];
     if (src === 'zero_shot') return '10,5';
     if (src === 'ocr') return '3,3';
-    return '';   // detector, manual, or missing → solid
+    return ''; // detector, manual, or verified → solid
   };
 
   const viewBoxWidth = naturalSize.width || 1600;
@@ -202,8 +235,8 @@ export default function ImageWithBoxes({
           </button>
         </div>
 
-        {/* Layer Toggles (§2.3) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 600 }}>
+        {/* Layer Toggles (§2.3 & §3.4) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', fontWeight: 600, flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--color-text-muted)' }}>Layers:</span>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             <input
@@ -224,10 +257,18 @@ export default function ImageWithBoxes({
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             <input
               type="checkbox"
+              checked={showVerified}
+              onChange={(e) => setShowVerified(e.target.checked)}
+            />
+            <span>Verified</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
               checked={findingsOnly}
               onChange={(e) => setFindingsOnly(e.target.checked)}
             />
-            <span>Findings only</span>
+            <span>Defects only</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: showGhost ? 'var(--color-primary)' : 'inherit' }}>
             <input
@@ -267,39 +308,43 @@ export default function ImageWithBoxes({
           )}
         </div>
 
-        {/* Legend — class colours + source stroke style */}
+        {/* Legend — defect status convention + source strokes */}
         <div className="viewer-legend">
-          <span className="legend-item">
-            <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.mcb }} />
-            <span>Breaker</span>
+          <span className="legend-item" title="Confirmed mismatch, wrong rating, or missing component">
+            <span className="legend-swatch" style={{ backgroundColor: STATUS_COLORS.defect }} />
+            <span>Mismatch / Missing</span>
           </span>
-          <span className="legend-item">
-            <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.power_supply }} />
-            <span>PSU</span>
+          <span className="legend-item" title="Low confidence, uncertain reading, or needs review">
+            <span className="legend-swatch" style={{ backgroundColor: STATUS_COLORS.review }} />
+            <span>Needs Review</span>
           </span>
-          <span className="legend-item">
-            <span className="legend-swatch" style={{ backgroundColor: CLASS_COLORS.io_module }} />
-            <span>I/O</span>
+          <span className="legend-item" title="Component verified matching drawing">
+            <span className="legend-swatch" style={{ backgroundColor: STATUS_COLORS.verified }} />
+            <span>Verified</span>
+          </span>
+          <span className="legend-item" title="Expected reference installation position or ghost outline">
+            <span className="legend-swatch" style={{ backgroundColor: 'transparent', border: `2px dashed ${STATUS_COLORS.ghost}` }} />
+            <span>Reference / Expected</span>
           </span>
           <span className="legend-sep" aria-hidden="true" />
-          <span className="legend-item" title="Trained RF-DETR detector (fine-tuned on our labels)">
+          <span className="legend-item" title="Trained RF-DETR detector (solid border)">
             <span className="legend-stroke solid" />
             <span>Detector</span>
           </span>
-          <span className="legend-item" title="OWLv2 zero-shot detector (pretrained, text-prompted)">
+          <span className="legend-item" title="OWLv2 zero-shot detector (long dashed border)">
             <span className="legend-stroke long-dash" />
             <span>Zero-shot</span>
           </span>
-          <span className="legend-item" title="OCR tag reader (RapidOCR)">
+          <span className="legend-item" title="OCR tag reader (short dashed border)">
             <span className="legend-stroke short-dash" />
             <span>OCR</span>
           </span>
           {showGhost && (
             <>
               <span className="legend-sep" aria-hidden="true" />
-              <span className="legend-item">
-                <span className="legend-swatch" style={{ backgroundColor: 'transparent', border: '2px dashed #9333ea' }} />
-                <span>Ghost (Drawing)</span>
+              <span className="legend-item" title="SIFT visual difference regions">
+                <span className="legend-swatch" style={{ backgroundColor: STATUS_COLORS.change_region }} />
+                <span>Change Region</span>
               </span>
             </>
           )}
@@ -376,7 +421,12 @@ export default function ImageWithBoxes({
             height={viewBoxHeight}
           >
             {boxes
-              .filter((box) => !findingsOnly || (box.status !== 'verified' && box.status !== 'pass'))
+              .filter((box) => {
+                const isVerified = box.status === 'verified' || box.status === 'pass' || box.issue_type === 'verified';
+                if (!showVerified && isVerified) return false;
+                if (findingsOnly && isVerified) return false;
+                return true;
+              })
               .map((box) => {
                 const [x1, y1, x2, y2] = box.bbox;
                 const w = Math.max(x2 - x1, 10);
@@ -444,14 +494,7 @@ export default function ImageWithBoxes({
                 const [x1, y1, x2, y2] = ghost.bbox || [0, 0, 0, 0];
                 const w = Math.max(x2 - x1, 10);
                 const h = Math.max(y2 - y1, 10);
-                const ghostColor =
-                  ghost.status === 'potential_mismatch'
-                    ? '#cf222e'
-                    : ghost.status === 'verified'
-                    ? '#1a7f37'
-                    : ghost.status === 'needs_review'
-                    ? '#9a6700'
-                    : '#6e7781';
+                const ghostColor = STATUS_COLORS.ghost;
 
                 return (
                   <g key={`ghost-${idx}`} className="ghost-box-group">
@@ -460,7 +503,7 @@ export default function ImageWithBoxes({
                       y={y1}
                       width={w}
                       height={h}
-                      fill="rgba(147, 51, 234, 0.04)"
+                      fill="rgba(0, 102, 179, 0.05)"
                       stroke={ghostColor}
                       strokeWidth="2"
                       strokeDasharray="6,4"
@@ -492,43 +535,59 @@ export default function ImageWithBoxes({
               })}
 
             {/* Missing Component Expected Spot (§3.4, contract E) */}
-            {showGhost &&
+            {showComponents &&
               missingExpectedBoxes.map((item, idx) => {
                 const [x1, y1, x2, y2] = item.expected_bbox || [0, 0, 0, 0];
                 const w = Math.max(x2 - x1, 10);
                 const h = Math.max(y2 - y1, 10);
+                const isSelected = item.id && item.id === highlightedId;
+                const isDimmed = highlightedId !== null && !isSelected;
+                const tagLabel = item.tag || item.expected_tag || '';
+
                 return (
-                  <g key={`missing-exp-${idx}`} className="missing-expected-group">
+                  <g
+                    key={`missing-exp-${idx}`}
+                    className={`missing-expected-group ${isSelected ? 'selected' : ''} ${isDimmed ? 'dimmed' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (item.id && onBoxClick) onBoxClick(item.id);
+                    }}
+                    style={{ cursor: item.id ? 'pointer' : 'default' }}
+                  >
                     <rect
                       x={x1}
                       y={y1}
                       width={w}
                       height={h}
-                      fill="rgba(207, 34, 46, 0.08)"
-                      stroke="#cf222e"
-                      strokeWidth="2.5"
-                      strokeDasharray="4,4"
+                      fill={isSelected ? 'rgba(207, 34, 46, 0.25)' : 'rgba(207, 34, 46, 0.08)'}
+                      stroke={STATUS_COLORS.defect}
+                      strokeWidth={isSelected ? '3.5' : '2.5'}
+                      strokeDasharray="6,4"
                       rx="3"
                       ry="3"
                     />
-                    <rect
-                      x={x1}
-                      y={Math.max(y1 - 20, 2)}
-                      width={Math.min((item.tag || item.expected_tag || '').length * 8 + 60, w + 50)}
-                      height="18"
-                      fill="#cf222e"
-                      rx="2"
-                      ry="2"
-                    />
-                    <text
-                      x={x1 + 4}
-                      y={Math.max(y1 - 7, 15)}
-                      fontSize="10"
-                      fontWeight="700"
-                      fill="#ffffff"
-                    >
-                      Expected: {item.tag || item.expected_tag}
-                    </text>
+                    {showTags && (
+                      <>
+                        <rect
+                          x={x1}
+                          y={Math.max(y1 - 20, 2)}
+                          width={Math.min(tagLabel.length * 8 + 70, w + 60)}
+                          height="18"
+                          fill={STATUS_COLORS.defect}
+                          rx="2"
+                          ry="2"
+                        />
+                        <text
+                          x={x1 + 4}
+                          y={Math.max(y1 - 7, 15)}
+                          fontSize="10"
+                          fontWeight="700"
+                          fill="#ffffff"
+                        >
+                          MISSING: {tagLabel}
+                        </text>
+                      </>
+                    )}
                   </g>
                 );
               })}

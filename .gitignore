@@ -38,7 +38,9 @@ models/*.safetensors
 backend/uploads/
 outputs/
 *.db
+*.db.*
 *.sqlite3
+*.bak
 
 # IDE and OS
 .vscode/

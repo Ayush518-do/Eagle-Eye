@@ -1,8 +1,9 @@
 """Inspections, observations, runs, images, review and reinspection (docs/team/backend.md
 endpoints 6-12). The quality passport (13) is in api/cabinets.py with the other cabinet reads."""
 from pathlib import PurePosixPath, PureWindowsPath
+from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -267,3 +268,57 @@ def review_finding(
     db.commit()
     return schemas.ReviewEventOut(finding_id=event.finding_id, decision=event.decision, reviewer=event.reviewer,
                                   note=event.note, created_at=event.created_at)
+
+
+# 14
+@router.get(
+    "/inspections/{inspection_id}/findings/{finding_id}/fit-feasibility",
+    response_model=schemas.EmptyPositionFitReportOut,
+)
+def get_finding_fit_feasibility(
+    inspection_id: str, finding_id: str, db: Session = Depends(get_db)
+) -> schemas.EmptyPositionFitReportOut:
+    """Assess mechanical and physical fit feasibility for a missing or replacement component."""
+    inspection = get_inspection_or_404(db, inspection_id)
+    finding = db.get(models.Finding, finding_id)
+    if finding is None or finding.inspection_id != inspection.id:
+        raise HTTPException(404, "Finding not found for this inspection.")
+
+    expected_item = None
+    if finding.tag:
+        expected_item = db.scalars(
+            select(models.ExpectedItem).where(
+                models.ExpectedItem.design_revision_id == inspection.design_revision_id,
+                models.ExpectedItem.tag == finding.tag,
+            )
+        ).first()
+
+    images = inspection_service.images_of(db, inspection.id)
+    flags = [flag for img in images for flag in (img.quality_flags or [])]
+
+    from dataclasses import asdict
+    from backend.app.pipeline.fit_feasibility import assess_empty_position
+
+    tag_str = finding.tag or "UNKNOWN"
+    part_number = expected_item.part_number if expected_item else None
+    rating_str = expected_item.rating_value if expected_item else finding.expected_value
+
+    report = assess_empty_position(
+        finding_id=finding.id,
+        tag=tag_str,
+        component_type="mcb",
+        expected_part_number=part_number,
+        expected_rating_str=rating_str,
+        image_flags=flags,
+    )
+    return schemas.EmptyPositionFitReportOut(**asdict(report))
+
+
+# 19 (Contract D)
+@router.get("/analytics", response_model=schemas.AnalyticsOut, tags=["analytics"])
+def get_analytics(
+    from_date: Optional[str] = Query(default=None, alias="from"),
+    to_date: Optional[str] = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+) -> schemas.AnalyticsOut:
+    return inspection_service.compute_analytics(db, from_date=from_date, to_date=to_date)
